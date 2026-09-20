@@ -178,5 +178,8 @@
 # Local upload cache
 .monkeycode-tmp-files/
 
+# GitHub login token (do not commit)
+授权登录Github.txt
+
 # Application workspace: keep the root lockfile
 !/Cargo.lock
