@@ -7,3 +7,19 @@ description = "Teacher server for PaperNet"
 
 [dependencies]
 papernet-shared = { path = "../shared" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+tempfile = "3"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -6,3 +6,5 @@ repository.workspace = true
 description = "Shared models and classroom protocol for PaperNet"
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

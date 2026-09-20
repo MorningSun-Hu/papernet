@@ -85,11 +85,20 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: 用户确认全部设计文档冻结（含去掉参考文档「不做」项、课堂码本期不实施之后的 V1.2）
 - Category: Workflow & Collaboration
 - Instructions:
-  - 已冻结：`docs/01-SRS.md`、`docs/02-接口设计.md`、`docs/03-数据设计.md`、`docs/04-后端开发实施规划.md`、`.monkeycode/specs/2026-09-19-classroom-network-sim/design.md`（当前 V1.2）
+  - 已冻结：`docs/01-SRS.md`、`docs/02-接口设计.md`、`docs/03-数据设计.md`、`docs/04-后端开发实施规划.md`、`.monkeycode/specs/2026-09-19-classroom-network-sim/design.md`（当前 V1.2）、`.monkeycode/specs/2026-09-19-classroom-network-sim/tasklist.md`
   - 未经用户授权或未经用户明确要求，不得修改上述文件
   - 与 `requirements.md` 冲突时以 `requirements.md` 为准，只改设计、不改冻结需求
   - 课堂码本期不实施；学生加入当前唯一课堂，不生成、不校验 `join_code`
   - 已领角色不因断线或心跳超时释放；waiting 连接在 open-claim 后立即领取
+
+[实施顺序]
+- Date: 2026-09-20
+- Context: 用户确认任务切分后的开发顺序与测试要求
+- Category: Workflow & Collaboration
+- Instructions:
+  - 先后端 P0–P5 完全调通且功能测试通过，再进入前端设计开发
+  - 功能性测试必须全部做，保证需求 100% 实现
+  - 任务与阶段基线：`.monkeycode/specs/2026-09-19-classroom-network-sim/tasklist.md`
 
 [构建与交叉编译]
 - Date: 2026-09-19
