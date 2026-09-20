@@ -1,0 +1,9 @@
+[package]
+name = "papernet-teacher"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Teacher server for PaperNet"
+
+[dependencies]
+papernet-shared = { path = "../shared" }

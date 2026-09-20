@@ -1,0 +1,8 @@
+[package]
+name = "papernet-shared"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Shared models and classroom protocol for PaperNet"
+
+[dependencies]

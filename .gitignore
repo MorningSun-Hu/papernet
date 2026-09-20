@@ -174,3 +174,9 @@
 *.lz
 *.lzma
 *.iso
+
+# Local upload cache
+.monkeycode-tmp-files/
+
+# Application workspace: keep the root lockfile
+!/Cargo.lock

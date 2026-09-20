@@ -1,0 +1,9 @@
+[package]
+name = "papernet-student"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Student client for PaperNet"
+
+[dependencies]
+papernet-shared = { path = "../shared" }
