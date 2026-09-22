@@ -7,3 +7,14 @@ description = "Student client for PaperNet"
 
 [dependencies]
 papernet-shared = { path = "../shared" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+
+[dev-dependencies]
+papernet-teacher = { path = "../teacher" }
+tempfile = "3"
+axum = { version = "0.8", features = ["ws"] }

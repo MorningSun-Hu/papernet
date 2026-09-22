@@ -99,15 +99,17 @@ Entries discovered by the Agent during task execution should follow this format:
   - 先后端 P0–P5 完全调通且功能测试通过，再进入前端设计开发
   - 功能性测试必须全部做，保证需求 100% 实现
   - 任务与阶段基线：`.monkeycode/specs/2026-09-19-classroom-network-sim/tasklist.md`
+  - 按阶段建 git 分支；P1 在 `P1`，P2 在 `P2`
 
 [构建与交叉编译]
-- Date: 2026-09-19
-- Context: 小磁盘环境与多平台编译中的通用做法
-- Instructions:
-  - 长编译、打包用受管后台终端，设置合理超时与 CPU 限制，避免把磁盘写满
-  - 交叉编译用环境变量指定 linker（例如 `CARGO_TARGET_*_LINKER`），不在仓库写死会污染其他平台构建的 `.cargo/config.toml`
-  - Windows 批处理使用 CRLF；避免 `if (...) else (...)` 块结构，改用 `goto`
-  - `cargo test` 不会更新运行用二进制；改完入口后需先 `cargo build` 再启动验证
+ - Date: 2026-09-21
+ - Context: 小磁盘环境与多平台编译中的通用做法
+ - Instructions:
+   - 长编译、打包用受管后台终端，设置合理超时与 CPU 限制，避免把磁盘写满
+   - 交叉编译用环境变量指定 linker（例如 `CARGO_TARGET_*_LINKER`），不在仓库写死会污染其他平台构建的 `.cargo/config.toml`
+   - Windows 批处理使用 CRLF；避免 `if (...) else (...)` 块结构，改用 `goto`
+   - `cargo test` 不会更新运行用二进制；改完入口后需先 `cargo build` 再启动验证
+   - 受管后台终端跑 cargo 时 PATH 可能不含 `/root/.cargo/bin`，使用绝对路径 `/root/.cargo/bin/cargo`
 
 [预览与本地验证]
 - Date: 2026-09-19
