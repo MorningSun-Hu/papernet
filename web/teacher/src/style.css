@@ -15,7 +15,7 @@ body {
     #d7c4a3;
 }
 main {
-  max-width: 760px;
+  max-width: 980px;
   margin: 0 auto;
   padding: 32px 18px 56px;
 }
@@ -89,4 +89,42 @@ button[disabled] {
 }
 .status {
   margin-top: 18px;
+}
+
+.mode-bar,
+.tap-form {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  margin: 16px 0;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.topo {
+  background: #f4efe4;
+  border: 1px solid #b9a27c;
+  box-shadow: 6px 8px 0 #6d5633;
+  overflow: auto;
+}
+.topo svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.topo .link {
+  stroke: #94a3b8;
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+  fill: none;
+}
+.topo .link.up {
+  stroke: #16a34a;
+  stroke-dasharray: none;
+}
+.topo .link.pending {
+  stroke: #94a3b8;
+}
+.topo text {
+  font-size: 11px;
+  fill: #334155;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
 }

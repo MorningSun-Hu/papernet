@@ -49,3 +49,37 @@ export async function openClaim(classroomId: string): Promise<string> {
   const state = typeof json.data?.claim_state === "string" ? json.data.claim_state : "open";
   return state;
 }
+
+export async function fetchSnapshot(classroomId: string): Promise<unknown> {
+  const res = await fetch(`/api/v1/classrooms/${encodeURIComponent(classroomId)}/snapshot`, {
+    headers: { "X-Client-Kind": CLIENT_KIND_TEACHER },
+  });
+  const json = (await res.json().catch(() => ({}))) as ApiBody;
+  if (res.status >= 400) {
+    throw new Error(json.error?.message || "读取快照失败");
+  }
+  return json.data ?? json;
+}
+
+export async function setMode(classroomId: string, mode: "normal" | "simulation"): Promise<string> {
+  const { status, json } = await post(`/api/v1/classrooms/${classroomId}/mode`, { mode });
+  if (status >= 400) {
+    throw new Error(json.error?.message || "切换模式失败");
+  }
+  return typeof json.data?.mode === "string" ? json.data.mode : mode;
+}
+
+export async function attachTap(
+  classroomId: string,
+  tapId: string,
+  portA: string,
+  portB: string,
+): Promise<unknown> {
+  const { status, json } = await post(`/api/v1/classrooms/${classroomId}/taps/${encodeURIComponent(tapId)}/attach`, {
+    link: { port_a: portA, port_b: portB },
+  });
+  if (status >= 400) {
+    throw new Error(json.error?.message || "挂接失败");
+  }
+  return json.data ?? json;
+}
