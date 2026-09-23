@@ -11,7 +11,7 @@ body {
     #132017;
 }
 main {
-  max-width: 720px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 48px 20px 64px;
 }
@@ -73,4 +73,124 @@ main {
 .hint {
   color: #9dba96;
   font-size: 0.92rem;
+}
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(180px, 0.7fr);
+  gap: 16px;
+  position: relative;
+}
+.canvas {
+  position: relative;
+  background: #0f1a13;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.chassis-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.port {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 9%;
+  min-width: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.port.hotspot {
+  width: 14%;
+  height: 18%;
+}
+.port img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.pid {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.68rem;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #d7e7d1;
+  text-shadow: 0 1px 2px #000;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4b5563;
+  display: inline-block;
+}
+.dot[data-up="true"] {
+  background: #22c55e;
+}
+.port-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.wires {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.wires line {
+  stroke: #64748b;
+  stroke-width: 2;
+  fill: none;
+}
+.wires line.up {
+  stroke: #16a34a;
+}
+.wires line.pending {
+  stroke: #64748b;
+}
+.peers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.peer-box {
+  position: relative;
+  background: #f4efe4;
+  color: #2a2418;
+  padding: 10px 10px 10px 18px;
+  border-radius: 4px;
+}
+.peer-box .box-dot {
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.peer-device,
+.peer-port {
+  margin: 0;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.port-editor {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.port-editor input,
+.port-editor select,
+.port-editor button {
+  font: inherit;
+}
+.mask {
+  margin: 0;
+  color: #9dba96;
+}
+@media (max-width: 720px) {
+  .stage {
+    grid-template-columns: 1fr;
+  }
 }

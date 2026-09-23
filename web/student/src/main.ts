@@ -10,10 +10,10 @@ import {
   ROLE_LABEL,
   ROLE_SHELL,
   wsPath,
-  type Device,
   type Screen,
 } from "@shared/claim";
-import { joinClassroom, loadConnectionId, persistScreen } from "./api";
+import { joinClassroom, listPeers, loadConnectionId, persistScreen, putPort } from "./api";
+import { layoutWires, renderStage } from "./stage";
 
 const app = mount();
 
@@ -36,9 +36,14 @@ let screen: Screen = { kind: "idle", message: "正在加入课堂…" };
 let socket: WebSocket | null = null;
 let heartbeat: number | null = null;
 let reconnectTimer: number | null = null;
+let selectedPortId: string | null = null;
+let peers: string[] = [];
 
 function render(): void {
   app.innerHTML = htmlFor(screen);
+  if (screen.kind === "claimed") {
+    layoutWires(app);
+  }
 }
 
 function htmlFor(s: Screen): string {
@@ -49,7 +54,7 @@ function htmlFor(s: Screen): string {
     return board(MSG_CLASSROOM_FULL, "full");
   }
   if (s.kind === "claimed") {
-    return claimedShell(s.device);
+    return claimedShell(s);
   }
   return board(s.message, "idle");
 }
@@ -63,21 +68,24 @@ function board(message: string, tone: string): string {
   `;
 }
 
-function claimedShell(device: Device): string {
-  const shell = ROLE_SHELL[device.kind];
-  const chassis = CHASSIS[device.kind] ?? switchUrl;
+function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
+  const shell = ROLE_SHELL[s.device.kind];
+  const chassis = CHASSIS[s.device.kind] ?? switchUrl;
+  const stage = renderStage(
+    s.device,
+    s.links,
+    { chassis, rj45: rj45Url },
+    selectedPortId,
+    peers.filter((id) => !id.startsWith(`${s.device.id}/`)),
+  );
   return `
     <main class="shell" data-kind="${shell}">
       <header>
         <p class="eyebrow">纸上谈网 · 学生席</p>
-        <h1>${escapeHtml(ROLE_LABEL[device.kind])}</h1>
-        <p class="device-id">${escapeHtml(device.id)}</p>
+        <h1>${escapeHtml(ROLE_LABEL[s.device.kind])}</h1>
+        <p class="device-id">${escapeHtml(s.device.id)}</p>
       </header>
-      <figure class="chassis">
-        <img src="${chassis}" alt="${escapeHtml(ROLE_LABEL[device.kind])}底图" />
-        ${device.kind === "pc" ? `<img class="rj45-mark" src="${rj45Url}" alt="RJ45" />` : ""}
-      </figure>
-      <p class="hint">设备舞台将在下一阶段叠加端口与接线。</p>
+      ${stage.html}
     </main>
   `;
 }
@@ -91,6 +99,7 @@ function escapeHtml(text: string): string {
 }
 
 function setScreen(next: Screen): void {
+  const needPeers = next.kind === "claimed" && (screen.kind !== "claimed" || peers.length === 0);
   screen = next;
   persistScreen(next);
   render();
@@ -98,6 +107,20 @@ function setScreen(next: Screen): void {
     openSocket(next.connectionId);
   } else {
     closeSocket();
+  }
+  if (needPeers && next.kind === "claimed") {
+    void refreshPeers(next.connectionId);
+  }
+}
+
+async function refreshPeers(connectionId: string): Promise<void> {
+  try {
+    peers = await listPeers(connectionId);
+    if (screen.kind === "claimed") {
+      render();
+    }
+  } catch {
+    /* keep last list */
   }
 }
 
@@ -175,5 +198,53 @@ async function boot(): Promise<void> {
     setScreen({ kind: "error", message: "无法连接教师机" });
   }
 }
+
+app.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLElement>(".port");
+  if (!btn?.dataset.port) {
+    return;
+  }
+  selectedPortId = btn.dataset.port;
+  render();
+});
+
+app.addEventListener("submit", (ev) => {
+  const form = ev.target as HTMLFormElement;
+  if (!form.classList.contains("port-editor") || screen.kind !== "claimed") {
+    return;
+  }
+  ev.preventDefault();
+  const portId = form.dataset.port;
+  if (!portId) {
+    return;
+  }
+  const data = new FormData(form);
+  const patch: { ip?: string; gateway?: string; peer_port_id?: string } = {};
+  const peer = String(data.get("peer_port_id") || "");
+  if (peer) {
+    patch.peer_port_id = peer;
+  }
+  const ip = String(data.get("ip") || "");
+  if (ip) {
+    patch.ip = ip;
+  }
+  const gateway = String(data.get("gateway") || "");
+  if (gateway) {
+    patch.gateway = gateway;
+  }
+  void putPort(screen.connectionId, screen.device.id, portId, patch)
+    .then((body) => {
+      setScreen(applyWsEvent(screen, { event: "topology.updated", ...(body as object) }));
+    })
+    .catch(() => {
+      /* keep current stage */
+    });
+});
+
+window.addEventListener("resize", () => {
+  if (screen.kind === "claimed") {
+    layoutWires(app);
+  }
+});
 
 void boot();

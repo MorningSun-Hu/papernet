@@ -25,10 +25,17 @@ export type Device = {
   ports: DevicePort[];
 };
 
+export type LinkView = {
+  link_id: string;
+  port_a: string;
+  port_b: string;
+  physically_up: boolean;
+};
+
 export type Screen =
   | { kind: "idle"; message: string }
   | { kind: "waiting_open"; message: string; connectionId: string }
-  | { kind: "claimed"; connectionId: string; device: Device }
+  | { kind: "claimed"; connectionId: string; device: Device; links: LinkView[] }
   | { kind: "full"; message: string }
   | { kind: "error"; message: string };
 
@@ -98,7 +105,7 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     if (!connectionId || !device) {
       return { kind: "error", message: "领取角色失败" };
     }
-    return { kind: "claimed", connectionId, device };
+    return { kind: "claimed", connectionId, device, links: [] };
   }
 
   if (
@@ -128,13 +135,17 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
     if (!device || !connectionId) {
       return screen;
     }
-    return { kind: "claimed", connectionId, device };
+    return { kind: "claimed", connectionId, device, links: [] };
   }
   if (event === "claim.full") {
     return {
       kind: "full",
       message: str(root.message) || MSG_CLASSROOM_FULL,
     };
+  }
+  if (event === "topology.updated" && screen.kind === "claimed") {
+    const next = applyTopologyPatch(screen.device, screen.links, root);
+    return { ...screen, device: next.device, links: next.links };
   }
   return screen;
 }
@@ -168,6 +179,45 @@ function numbered(prefix: string, count: number): string[] {
   return Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`);
 }
 
+export function parseLinks(raw: unknown): LinkView[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      return {
+        link_id: str(rec.link_id),
+        port_a: str(rec.port_a),
+        port_b: str(rec.port_b),
+        physically_up: rec.physically_up === true,
+      };
+    })
+    .filter((link) => link.port_a && link.port_b);
+}
+
+export function applyTopologyPatch(
+  device: Device,
+  links: LinkView[],
+  payload: unknown,
+): { device: Device; links: LinkView[] } {
+  const root = asRecord(payload);
+  let ports = device.ports;
+  if (Array.isArray(root.ports)) {
+    const incoming = new Map(
+      root.ports.map((item) => {
+        const port = parsePort(item);
+        return [port.id, port] as const;
+      }),
+    );
+    ports = device.ports.map((port) => incoming.get(port.id) ?? port);
+  }
+  return {
+    device: { ...device, ports },
+    links: Array.isArray(root.links) ? parseLinks(root.links) : links,
+  };
+}
+
 function parseDevice(value: unknown): Device | null {
   const rec = asRecord(value);
   const id = str(rec.id);
@@ -176,18 +226,20 @@ function parseDevice(value: unknown): Device | null {
     return null;
   }
   const portsRaw = Array.isArray(rec.ports) ? rec.ports : [];
-  const ports: DevicePort[] = portsRaw.map((p) => {
-    const port = asRecord(p);
-    return {
-      id: str(port.id),
-      ip: port.ip == null ? null : str(port.ip),
-      mask: port.mask == null ? null : str(port.mask),
-      gateway: port.gateway == null ? null : str(port.gateway),
-      peer_port_id: port.peer_port_id == null ? null : str(port.peer_port_id),
-      mac: port.mac == null ? null : str(port.mac),
-    };
-  });
+  const ports: DevicePort[] = portsRaw.map((p) => parsePort(p));
   return { id, kind, mac: rec.mac == null ? null : str(rec.mac), ports };
+}
+
+function parsePort(value: unknown): DevicePort {
+  const port = asRecord(value);
+  return {
+    id: str(port.id),
+    ip: port.ip == null ? null : str(port.ip),
+    mask: port.mask == null ? null : str(port.mask),
+    gateway: port.gateway == null ? null : str(port.gateway),
+    peer_port_id: port.peer_port_id == null ? null : str(port.peer_port_id),
+    mac: port.mac == null ? null : str(port.mac),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
