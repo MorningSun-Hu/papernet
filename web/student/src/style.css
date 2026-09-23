@@ -189,6 +189,80 @@ main {
   margin: 0;
   color: #9dba96;
 }
+
+.bench {
+  margin-top: 28px;
+  padding: 18px;
+  background: #0f1a13;
+  border-radius: 8px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.bench h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.bench table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+.bench th,
+.bench td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2c4a34;
+}
+.chat-log,
+.tap-log {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+.chat-log li,
+.tap-log li {
+  padding: 6px 0;
+  border-bottom: 1px solid #2c4a34;
+}
+.chat-form,
+.ping-form,
+.forward-form {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+  margin-bottom: 12px;
+}
+.frame {
+  background: #18261c;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.frame-head {
+  display: grid;
+  grid-template-columns: 7em 1fr;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+}
+.frame-head dt {
+  color: #9dba96;
+}
+.frame-head dd {
+  margin: 0;
+}
+.frame-payload {
+  margin: 0;
+  padding: 8px;
+  background: #24382c;
+}
+.notice {
+  color: #f3d27a;
+}
+.notice.wrong-port {
+  color: #f87171;
+}
+.fwd-port {
+  margin-right: 8px;
+}
 @media (max-width: 720px) {
   .stage {
     grid-template-columns: 1fr;

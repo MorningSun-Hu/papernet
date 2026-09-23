@@ -4,6 +4,8 @@ import routerUrl from "@icons/router.svg?url";
 import nicUrl from "@icons/nic.svg?url";
 import rj45Url from "@icons/rj45.svg?url";
 import {
+  applyNotice,
+  applyPingDetail,
   applyWsEvent,
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
@@ -12,7 +14,19 @@ import {
   wsPath,
   type Screen,
 } from "@shared/claim";
-import { joinClassroom, listPeers, loadConnectionId, persistScreen, putPort } from "./api";
+import { renderWorkbench, withoutTapPorts } from "@shared/workbench";
+import {
+  ApiError,
+  forwardFrame,
+  joinClassroom,
+  listPeers,
+  loadConnectionId,
+  persistScreen,
+  putPort,
+  sendChat,
+  sendPing,
+  simSend,
+} from "./api";
 import { layoutWires, renderStage } from "./stage";
 
 const app = mount();
@@ -76,7 +90,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
     s.links,
     { chassis, rj45: rj45Url },
     selectedPortId,
-    peers.filter((id) => !id.startsWith(`${s.device.id}/`)),
+    withoutTapPorts(peers.filter((id) => !id.startsWith(`${s.device.id}/`))),
   );
   return `
     <main class="shell" data-kind="${shell}">
@@ -86,6 +100,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         <p class="device-id">${escapeHtml(s.device.id)}</p>
       </header>
       ${stage.html}
+      ${renderWorkbench(s)}
     </main>
   `;
 }
@@ -239,6 +254,62 @@ app.addEventListener("submit", (ev) => {
     .catch(() => {
       /* keep current stage */
     });
+});
+
+app.addEventListener("submit", (ev) => {
+  const form = ev.target as HTMLFormElement;
+  if (screen.kind !== "claimed") {
+    return;
+  }
+  if (form.classList.contains("chat-form")) {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const toIp = String(data.get("to_ip") || "");
+    const text = String(data.get("text") || "");
+    const conn = screen.connectionId;
+    const req =
+      screen.mode === "simulation" ? simSend(conn, toIp, text) : sendChat(conn, toIp, text);
+    void req
+      .then((body) => {
+        const rec = body as { frame?: unknown };
+        if (rec.frame) {
+          setScreen(applyWsEvent(screen, { event: "frame.built", frame: rec.frame }));
+        }
+      })
+      .catch((err) => {
+        setScreen(applyNotice(screen, err instanceof ApiError ? err.message : "发送失败"));
+      });
+    return;
+  }
+  if (form.classList.contains("ping-form")) {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const toIp = String(data.get("to_ip") || "");
+    void sendPing(screen.connectionId, toIp)
+      .then((res) => {
+        setScreen(applyPingDetail(screen, res.detail));
+      })
+      .catch((err) => {
+        setScreen(applyNotice(screen, err instanceof ApiError ? err.message : "ping 失败"));
+      });
+    return;
+  }
+  if (form.classList.contains("forward-form")) {
+    ev.preventDefault();
+    const submitter = (ev as SubmitEvent).submitter as HTMLButtonElement | null;
+    const outPort = submitter?.value || String(new FormData(form).get("out_port_id") || "");
+    const frameId = screen.frame?.frame_id;
+    if (!frameId || !outPort) {
+      return;
+    }
+    void forwardFrame(screen.connectionId, frameId, outPort)
+      .then(() => {
+        setScreen(applyWsEvent(screen, { event: "frame.departed", frame_id: frameId }));
+      })
+      .catch((err) => {
+        setScreen(applyNotice(screen, err instanceof ApiError ? err.message : "转发失败"));
+      });
+  }
 });
 
 window.addEventListener("resize", () => {

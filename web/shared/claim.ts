@@ -1,5 +1,6 @@
 export const MSG_WAITING_OPEN = "请等待教师确定本课设备";
 export const MSG_CLASSROOM_FULL = "本课设备已领完，请看教师屏";
+export const MSG_WRONG_PORT = "端口不正确";
 
 export const CLIENT_KIND_HOSTED = "student-hosted";
 export const CLIENT_KIND_TEACHER = "teacher";
@@ -32,10 +33,55 @@ export type LinkView = {
   physically_up: boolean;
 };
 
+export type MacEntry = {
+  switch_id: string;
+  port_id: string;
+  mac: string;
+};
+
+export type ArpEntry = {
+  device_id: string;
+  ip: string;
+  mac: string;
+};
+
+export type ChatLine = {
+  from_ip: string;
+  to_ip: string;
+  text: string;
+  dir: "sent" | "received";
+};
+
+export type SimFrameView = {
+  frame_id: string;
+  dst_mac: string;
+  src_mac: string;
+  src_ip: string;
+  dst_ip: string;
+  payload: string;
+  at_device_id: string;
+  status: string;
+};
+
+export type ClaimedScreen = {
+  kind: "claimed";
+  connectionId: string;
+  device: Device;
+  links: LinkView[];
+  mode: "normal" | "simulation";
+  macTable: MacEntry[];
+  arpTable: ArpEntry[];
+  chatLog: ChatLine[];
+  pingDetail: string;
+  notice: string;
+  frame: SimFrameView | null;
+  tapLog: SimFrameView[];
+};
+
 export type Screen =
   | { kind: "idle"; message: string }
   | { kind: "waiting_open"; message: string; connectionId: string }
-  | { kind: "claimed"; connectionId: string; device: Device; links: LinkView[] }
+  | ClaimedScreen
   | { kind: "full"; message: string }
   | { kind: "error"; message: string };
 
@@ -105,7 +151,7 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     if (!connectionId || !device) {
       return { kind: "error", message: "领取角色失败" };
     }
-    return { kind: "claimed", connectionId, device, links: [] };
+    return blankClaimed(connectionId, device);
   }
 
   if (
@@ -135,7 +181,7 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
     if (!device || !connectionId) {
       return screen;
     }
-    return { kind: "claimed", connectionId, device, links: [] };
+    return blankClaimed(connectionId, device);
   }
   if (event === "claim.full") {
     return {
@@ -145,11 +191,117 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
   }
   if (event === "topology.updated" && screen.kind === "claimed") {
     const next = applyTopologyPatch(screen.device, screen.links, root);
-    return { ...screen, device: next.device, links: next.links };
+    return {
+      ...screen,
+      device: next.device,
+      links: next.links,
+      macTable: Array.isArray(root.mac_table) ? parseMacTable(root.mac_table) : screen.macTable,
+      arpTable: Array.isArray(root.arp_table) ? parseArpTable(root.arp_table) : screen.arpTable,
+    };
+  }
+  if ((event === "hello" || event === "mode.changed") && screen.kind === "claimed") {
+    const mode = str(root.mode);
+    if (mode === "normal" || mode === "simulation") {
+      return { ...screen, mode, notice: "" };
+    }
+  }
+  if ((event === "chat.sent" || event === "chat.received") && screen.kind === "claimed") {
+    return {
+      ...screen,
+      chatLog: [
+        ...screen.chatLog,
+        {
+          from_ip: str(root.from_ip),
+          to_ip: str(root.to_ip),
+          text: str(root.text),
+          dir: event === "chat.sent" ? "sent" : "received",
+        },
+      ],
+    };
+  }
+  if (event === "frame.built" && screen.kind === "claimed") {
+    const frame = parseFrame(root.frame);
+    if (!frame) {
+      return screen;
+    }
+    if (screen.frame?.frame_id === frame.frame_id) {
+      return screen;
+    }
+    const chatLog = frame
+      ? [
+          ...screen.chatLog,
+          { from_ip: frame.src_ip, to_ip: frame.dst_ip, text: frame.payload, dir: "sent" as const },
+        ]
+      : screen.chatLog;
+    return { ...screen, frame, chatLog, notice: "" };
+  }
+  if (event === "frame.arrived" && screen.kind === "claimed") {
+    const frame = parseFrame(root.frame);
+    if (frame?.status === "delivered") {
+      return {
+        ...screen,
+        frame: null,
+        notice: "",
+        chatLog: [
+          ...screen.chatLog,
+          { from_ip: frame.src_ip, to_ip: frame.dst_ip, text: frame.payload, dir: "received" },
+        ],
+      };
+    }
+    return { ...screen, frame, notice: "" };
+  }
+  if (event === "frame.departed" && screen.kind === "claimed") {
+    const id = str(root.frame_id);
+    return {
+      ...screen,
+      frame: screen.frame && screen.frame.frame_id === id ? null : screen.frame,
+      notice: "",
+    };
+  }
+  if (event === "frame.logged" && screen.kind === "claimed") {
+    const frame = parseFrame(root.frame);
+    return {
+      ...screen,
+      tapLog: frame ? [...screen.tapLog, frame] : screen.tapLog,
+    };
   }
   return screen;
 }
 
+export function blankClaimed(
+  connectionId: string,
+  device: Device,
+  links: LinkView[] = [],
+): ClaimedScreen {
+  return {
+    kind: "claimed",
+    connectionId,
+    device,
+    links,
+    mode: "normal",
+    macTable: [],
+    arpTable: [],
+    chatLog: [],
+    pingDetail: "",
+    notice: "",
+    frame: null,
+    tapLog: [],
+  };
+}
+
+export function applyNotice(screen: Screen, message: string): Screen {
+  if (screen.kind !== "claimed") {
+    return screen;
+  }
+  return { ...screen, notice: message };
+}
+
+export function applyPingDetail(screen: Screen, detail: string): Screen {
+  if (screen.kind !== "claimed") {
+    return screen;
+  }
+  return { ...screen, pingDetail: detail, notice: "" };
+}
 export type InventoryForm = {
   pcCount: number;
   switchCount: number;
@@ -239,6 +391,56 @@ function parsePort(value: unknown): DevicePort {
     gateway: port.gateway == null ? null : str(port.gateway),
     peer_port_id: port.peer_port_id == null ? null : str(port.peer_port_id),
     mac: port.mac == null ? null : str(port.mac),
+  };
+}
+
+function parseMacTable(raw: unknown): MacEntry[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      return {
+        switch_id: str(rec.switch_id),
+        port_id: str(rec.port_id),
+        mac: str(rec.mac),
+      };
+    })
+    .filter((row) => row.switch_id && row.port_id && row.mac);
+}
+
+function parseArpTable(raw: unknown): ArpEntry[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      return {
+        device_id: str(rec.device_id),
+        ip: str(rec.ip),
+        mac: str(rec.mac),
+      };
+    })
+    .filter((row) => row.device_id && row.ip && row.mac);
+}
+
+function parseFrame(value: unknown): SimFrameView | null {
+  const rec = asRecord(value);
+  const frame_id = str(rec.frame_id);
+  if (!frame_id) {
+    return null;
+  }
+  return {
+    frame_id,
+    dst_mac: str(rec.dst_mac),
+    src_mac: str(rec.src_mac),
+    src_ip: str(rec.src_ip),
+    dst_ip: str(rec.dst_ip),
+    payload: str(rec.payload),
+    at_device_id: str(rec.at_device_id),
+    status: str(rec.status),
   };
 }
 

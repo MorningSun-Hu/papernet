@@ -149,11 +149,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - `.gitignore` 仍忽略 `授权登录Github.txt`，防止再次放回仓库被提交
 
 [设备图标素材]
-- Date: 2026-09-22
-- Context: 用户要求学生端按 PNG 手绘轻量 SVG；教师端后传思科图标
+- Date: 2026-09-23
+- Context: 用户要求学生端按 PNG 手绘轻量 SVG；教师端后传思科图标；预览问题先记文档后期再改
 - Category: Workflow & Collaboration
 - Instructions:
   - 设备原图目录：`assets/icons/source/`
   - 学生端运行时只用 `assets/icons/*.svg` 轻量手绘矢量，对照 `source/` PNG 绘制
   - 禁止使用 `source/` 里体积过大的参考 SVG
   - 教师端思科图标待用户后传；未到前用逻辑几何 SVG 占位
+  - 用户要求「先记下来后期优化」的前端画面问题，写入 `docs/07-前端后期优化.md`，不要只留在对话里
+  - 该清单本阶段不改代码；当前阶段先保证功能实现
