@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="Router">
+  <ellipse cx="40" cy="58" rx="28" ry="10" fill="#dbeafe" stroke="#1e3a5f" stroke-width="2"/>
+  <rect x="12" y="22" width="56" height="36" fill="#93c5fd" stroke="#1e3a5f" stroke-width="2"/>
+  <ellipse cx="40" cy="22" rx="28" ry="10" fill="#bfdbfe" stroke="#1e3a5f" stroke-width="2"/>
+  <text x="40" y="46" text-anchor="middle" fill="#1e3a5f" font-size="16" font-weight="700" font-family="sans-serif">R</text>
+</svg>

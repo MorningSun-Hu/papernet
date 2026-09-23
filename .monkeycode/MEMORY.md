@@ -147,3 +147,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 本环境已用 GitHub CLI 登录账号 `MorningSun-Hu`（`/root/.config/gh/hosts.yml` 与 `~/.git-credentials`）
   - 仓库根目录不放置 token 文件；用户交来的登录文件已移出仓库，到 `/root/.config/papernet/github-token.txt`（权限 600），仅在 gh 登录失效时再用来重登
   - `.gitignore` 仍忽略 `授权登录Github.txt`，防止再次放回仓库被提交
+
+[设备图标素材]
+- Date: 2026-09-22
+- Context: 用户要求学生端按 PNG 手绘轻量 SVG；教师端后传思科图标
+- Category: Workflow & Collaboration
+- Instructions:
+  - 设备原图目录：`assets/icons/source/`
+  - 学生端运行时只用 `assets/icons/*.svg` 轻量手绘矢量，对照 `source/` PNG 绘制
+  - 禁止使用 `source/` 里体积过大的参考 SVG
+  - 教师端思科图标待用户后传；未到前用逻辑几何 SVG 占位

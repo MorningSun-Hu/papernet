@@ -1,0 +1,76 @@
+:root {
+  color: #e7efe4;
+  background: #132017;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #2c4a34 0%, transparent 55%),
+    #132017;
+}
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px 64px;
+}
+.board {
+  min-height: 70vh;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border: 12px solid #6b4a2b;
+  background: #1c3a28;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.35);
+}
+.eyebrow {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: #b7c9b0;
+  margin: 0 0 16px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.copy {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  line-height: 1.45;
+}
+.board.full .copy {
+  color: #f3d27a;
+}
+.shell header {
+  margin-bottom: 20px;
+}
+.shell h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+.device-id {
+  margin: 6px 0 0;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #9dba96;
+}
+.chassis {
+  margin: 0;
+  padding: 18px;
+  background: #0f1a13;
+  border-radius: 8px;
+  position: relative;
+}
+.chassis img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.rj45-mark {
+  position: absolute;
+  width: 48px !important;
+  right: 28px;
+  bottom: 28px;
+}
+.hint {
+  color: #9dba96;
+  font-size: 0.92rem;
+}

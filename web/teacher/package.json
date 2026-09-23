@@ -1,0 +1,14 @@
+{
+  "name": "papernet-teacher-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "node ../../scripts/check-f0.mjs && node --experimental-strip-types ../../scripts/check-f1.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

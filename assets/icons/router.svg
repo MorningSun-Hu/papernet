@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 280" role="img" aria-label="Router">
+  <defs>
+    <linearGradient id="rtTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6e7680"/>
+      <stop offset="100%" stop-color="#454c54"/>
+    </linearGradient>
+    <linearGradient id="rtFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#434a52"/>
+      <stop offset="100%" stop-color="#2a2f35"/>
+    </linearGradient>
+    <pattern id="rtVent" width="7" height="8" patternUnits="userSpaceOnUse">
+      <rect x="0.6" y="2.2" width="4.6" height="1.5" rx="0.4" fill="#262b31"/>
+    </pattern>
+  </defs>
+  <rect x="12" y="86" width="48" height="148" rx="6" fill="#262b31"/>
+  <circle cx="36" cy="112" r="8" fill="#d5d9e0"/>
+  <circle cx="36" cy="208" r="8" fill="#d5d9e0"/>
+  <rect x="940" y="86" width="48" height="148" rx="6" fill="#262b31"/>
+  <circle cx="964" cy="112" r="8" fill="#d5d9e0"/>
+  <circle cx="964" cy="208" r="8" fill="#d5d9e0"/>
+  <rect x="52" y="50" width="896" height="192" rx="8" fill="url(#rtFace)"/>
+  <rect x="64" y="50" width="872" height="44" fill="url(#rtTop)"/>
+  <rect x="88" y="62" width="824" height="22" fill="url(#rtVent)"/>
+  <rect id="port-bay" x="80" y="112" width="840" height="108" rx="6" fill="#30363d" stroke="#1f2428" stroke-width="2"/>
+  <text x="92" y="104" fill="#eef1f4" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20" font-weight="600">Router</text>
+</svg>
