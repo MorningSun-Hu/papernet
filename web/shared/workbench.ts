@@ -1,4 +1,4 @@
-import type { ClaimedScreen, SimFrameView } from "./claim";
+import type { ClaimedScreen, DeviceKind, SimFrameView } from "./claim";
 
 const MSG_WRONG_PORT = "端口不正确";
 
@@ -26,7 +26,7 @@ function pcBench(screen: ClaimedScreen): string {
     <section class="bench" data-role="pc">
       ${arpTable(screen)}
       ${chatWindow(screen)}
-      ${sim ? frameCard(screen.frame) : ""}
+      ${sim ? frameCard(screen.frame, "pc") : ""}
       ${sim ? simForm() : `${chatForm()}${pingForm(screen.pingDetail)}`}
       ${notice(screen.notice)}
     </section>
@@ -53,7 +53,7 @@ function switchBench(screen: ClaimedScreen): string {
           }
         </tbody>
       </table>
-      ${frameCard(screen.frame)}
+      ${frameCard(screen.frame, "switch")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
       ${notice(screen.notice)}
     </section>
@@ -65,7 +65,7 @@ function routerBench(screen: ClaimedScreen): string {
     <section class="bench" data-role="router">
       ${arpTable(screen)}
       ${screen.mode === "normal" ? pingForm(screen.pingDetail) : ""}
-      ${frameCard(screen.frame)}
+      ${frameCard(screen.frame, "router")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
       ${notice(screen.notice)}
     </section>
@@ -80,7 +80,7 @@ function tapBench(screen: ClaimedScreen): string {
       <ul class="tap-log">
         ${
           frames.length
-            ? frames.map((frame) => `<li>${frameLine(frame)}</li>`).join("")
+            ? frames.map((frame) => `<li>${frameStrip(frame)}</li>`).join("")
             : "<li>暂无过路帧</li>"
         }
       </ul>
@@ -175,26 +175,60 @@ function forwardForm(screen: ClaimedScreen): string {
   `;
 }
 
-function frameCard(frame: SimFrameView | null): string {
+function frameCard(frame: SimFrameView | null, kind?: DeviceKind): string {
   if (!frame) {
     return "";
   }
+  const delivered = frame.status === "delivered";
+  const note =
+    kind === "pc" && delivered
+      ? "解包：取出消息"
+      : kind === "pc"
+        ? "打包：把消息装进数据帧"
+        : kind === "router"
+          ? "解包查看目的 IP，再重新打包转发"
+          : kind === "switch"
+            ? "按目的 MAC 转发数据帧"
+            : "";
+  const packing =
+    kind === "pc" && !delivered
+      ? `<div class="encap-plain" data-step="payload"><span class="encap-label">消息</span><span>${escapeHtml(frame.payload)}</span></div><p class="encap-arrow">打包</p>`
+      : "";
+  const unpack =
+    kind === "router"
+      ? `<p class="encap-arrow">解包 → 网络层 → 重新打包</p>`
+      : kind === "pc" && delivered
+        ? `<p class="frame-message" data-part="message">消息：${escapeHtml(frame.payload)}</p>`
+        : "";
   return `
-    <article class="frame" data-frame="${escapeAttr(frame.frame_id)}">
+    <article class="frame" data-frame="${escapeAttr(frame.frame_id)}" data-status="${escapeAttr(frame.status)}">
       <h2>网络帧</h2>
-      <dl class="frame-head" data-part="header">
-        <dt>目的 MAC</dt><dd>${escapeHtml(frame.dst_mac)}</dd>
-        <dt>源 MAC</dt><dd>${escapeHtml(frame.src_mac)}</dd>
-        <dt>源 IP</dt><dd>${escapeHtml(frame.src_ip)}</dd>
-        <dt>目的 IP</dt><dd>${escapeHtml(frame.dst_ip)}</dd>
-      </dl>
-      <p class="frame-payload" data-part="payload">${escapeHtml(frame.payload)}</p>
+      ${note ? `<p class="frame-note">${note}</p>` : ""}
+      ${packing}
+      ${frameStrip(frame)}
+      ${unpack}
     </article>
   `;
 }
 
-function frameLine(frame: SimFrameView): string {
-  return `${escapeHtml(frame.src_ip)} → ${escapeHtml(frame.dst_ip)} ${escapeHtml(frame.payload)}`;
+function frameStrip(frame: SimFrameView): string {
+  const changed = new Set(frame.changed ?? []);
+  const cell = (field: string, label: string, value: string, part?: string) => {
+    const mark = changed.has(field) ? " changed" : "";
+    const partAttr = part ? ` data-part="${part}"` : "";
+    return `<div class="frame-cell${mark}" data-field="${field}"${partAttr}><span class="k">${label}</span><span class="v">${escapeHtml(value)}</span></div>`;
+  };
+  return `
+    <div class="frame-strip" data-part="header">
+      ${cell("dst_mac", "目的 MAC", frame.dst_mac)}
+      ${cell("src_mac", "源 MAC", frame.src_mac)}
+      ${cell("src_ip", "源 IP", frame.src_ip)}
+      ${cell("dst_ip", "目的 IP", frame.dst_ip)}
+    </div>
+    <div class="frame-strip payload-strip">
+      ${cell("payload", "数据", frame.payload, "payload")}
+    </div>
+  `;
 }
 
 function notice(text: string): string {

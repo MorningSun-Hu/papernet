@@ -3,7 +3,7 @@ import routerUrl from "@icons/logical/router.svg?url";
 import switchUrl from "@icons/logical/switch.svg?url";
 import pcUrl from "@icons/logical/pc.svg?url";
 import tapUrl from "@icons/logical/tap.svg?url";
-import { wsPath } from "@shared/claim";
+import { buildInventory, formatClaimRoster, targetClassroomInventory, wsPath } from "@shared/claim";
 import { applyTopoEvent, parseTopoSnapshot, type TopoSnapshot } from "@shared/topo";
 import { attachTap, createClassroom, fetchSnapshot, loadClassroomId, openClaim, setMode } from "./api";
 import { renderCanvas } from "./canvas";
@@ -43,6 +43,7 @@ let claimState = classroomId ? "draft" : "";
 let notice = "";
 let snap: TopoSnapshot | null = null;
 let socket: WebSocket | null = null;
+let targetScene = false;
 
 const icons = {
   pc: pcUrl,
@@ -74,10 +75,11 @@ function render(): void {
           ${stepper("switchPorts", "交换机口数", form.switchPorts, 1, 24)}
           ${stepper("routerCount", "路由器台数", form.routerCount, 0, 12)}
           ${stepper("routerPorts", "路由器口数", form.routerPorts, 1, 8)}
-          ${stepper("tapCount", "特殊双口交换机", form.tapCount, 0, 8)}
+          ${stepper("tapCount", "网络分流器", form.tapCount, 0, 8)}
         </div>
         <div class="actions">
           <button type="submit" id="create">创建课堂</button>
+          <button type="button" id="target-scene">载入目标课堂</button>
           <button type="button" id="open" ${classroomId ? "" : "disabled"}>开放领取</button>
         </div>
       </form>
@@ -105,10 +107,22 @@ function statusLine(): string {
   if (!classroomId) {
     return "填写数量后创建课堂。学生此时看到等待文案。";
   }
-  if (claimState === "open" || claimState === "full") {
-    return `课堂 ${classroomId} 已开放领取（${claimState}）。`;
+  if (claimState !== "open" && claimState !== "full") {
+    return "课堂已创建，尚未开放领取。";
   }
-  return `课堂 ${classroomId} 已创建，尚未开放领取。`;
+  if (!snap) {
+    return claimState === "full" ? "本课设备已领完。" : "已开放领取。";
+  }
+  const roster = formatClaimRoster(snap.devices);
+  const bits = [`已领取 ${roster.taken}/${roster.total}`];
+  if (roster.claimed) {
+    bits.push(`已领 ${roster.claimed}`);
+  }
+  if (roster.free) {
+    bits.push(`未领 ${roster.free}`);
+  }
+  const head = claimState === "full" ? "本课设备已领完。" : "已开放领取。";
+  return `${head}${bits.join("。")}`;
 }
 
 function modeBar(): string {
@@ -159,12 +173,17 @@ function bind(): void {
     form.routerCount = num(data, "routerCount", form.routerCount);
     form.routerPorts = num(data, "routerPorts", form.routerPorts);
     form.tapCount = num(data, "tapCount", form.tapCount);
+    targetScene = false;
   });
   roster?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     notice = "";
     try {
-      classroomId = await createClassroom(form.title, form);
+      classroomId = await createClassroom(
+        form.title,
+        form,
+        targetScene ? targetClassroomInventory() : undefined,
+      );
       claimState = "draft";
       await loadSnap();
     } catch (err) {
@@ -179,9 +198,22 @@ function bind(): void {
     notice = "";
     try {
       claimState = await openClaim(classroomId);
+      await loadSnap();
     } catch (err) {
       notice = err instanceof Error ? err.message : "开放领取失败";
     }
+    render();
+  });
+  document.querySelector<HTMLButtonElement>("#target-scene")?.addEventListener("click", () => {
+    form.title = "目标课堂";
+    form.pcCount = 2;
+    form.switchCount = 2;
+    form.switchPorts = 2;
+    form.routerCount = 1;
+    form.routerPorts = 2;
+    form.tapCount = 0;
+    targetScene = true;
+    notice = "已载入目标课堂：PCA — S1 — R1 — S2 — PCB";
     render();
   });
 }
@@ -204,7 +236,12 @@ async function loadSnap(): Promise<void> {
     return;
   }
   try {
-    snap = parseTopoSnapshot(await fetchSnapshot(classroomId));
+    const raw = await fetchSnapshot(classroomId);
+    snap = parseTopoSnapshot(raw);
+    const rec = raw && typeof raw === "object" ? (raw as { claim_state?: string }) : {};
+    if (rec.claim_state === "open" || rec.claim_state === "full" || rec.claim_state === "draft") {
+      claimState = rec.claim_state;
+    }
     openSocket();
   } catch (err) {
     notice = err instanceof Error ? err.message : "读取拓扑失败";
@@ -222,6 +259,13 @@ function openSocket(): void {
   ws.onmessage = (ev) => {
     try {
       const payload = JSON.parse(String(ev.data));
+      if (payload.event === "claim.full") {
+        claimState = "full";
+      }
+      if (payload.event === "classroom.online" || payload.event === "claim.full") {
+        void loadSnap().then(() => render());
+        return;
+      }
       if (snap) {
         snap = applyTopoEvent(snap, payload);
         render();

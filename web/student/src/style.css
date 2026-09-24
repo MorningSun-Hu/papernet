@@ -237,22 +237,62 @@ main {
   border-radius: 6px;
   margin-bottom: 12px;
 }
-.frame-head {
-  display: grid;
-  grid-template-columns: 7em 1fr;
-  gap: 4px 10px;
+.frame-note,
+.encap-arrow {
   margin: 0 0 8px;
+  color: #f3d27a;
+  font-size: 0.88rem;
 }
-.frame-head dt {
-  color: #9dba96;
-}
-.frame-head dd {
-  margin: 0;
-}
-.frame-payload {
-  margin: 0;
-  padding: 8px;
+.encap-plain {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px 10px;
   background: #24382c;
+  border: 2px solid #9dba96;
+}
+.encap-label {
+  color: #9dba96;
+  font-size: 0.75rem;
+}
+.frame-strip {
+  display: flex;
+  flex-wrap: wrap;
+  border: 2px solid #9dba96;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.frame-cell {
+  flex: 1 1 7.5em;
+  padding: 8px 10px;
+  border-right: 1px solid #3d5c44;
+  min-width: 7em;
+}
+.frame-cell .k {
+  display: block;
+  font-size: 0.7rem;
+  color: #9dba96;
+  margin-bottom: 4px;
+}
+.frame-cell .v {
+  word-break: break-all;
+}
+.frame-cell.changed {
+  background: #3b1515;
+}
+.frame-cell.changed .k,
+.frame-cell.changed .v {
+  color: #ef4444;
+}
+.payload-strip .frame-cell {
+  flex: 1 1 100%;
+}
+.frame-message {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: #24382c;
+  border: 2px solid #f3d27a;
 }
 .notice {
   color: #f3d27a;

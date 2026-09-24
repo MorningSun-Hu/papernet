@@ -3,12 +3,17 @@ export const MSG_CLASSROOM_FULL = "本课设备已领完，请看教师屏";
 export const MSG_WRONG_PORT = "端口不正确";
 
 export const CLIENT_KIND_HOSTED = "student-hosted";
+export const CLIENT_KIND_STANDALONE = "student-standalone";
 export const CLIENT_KIND_TEACHER = "teacher";
 
 export const STORAGE_CONNECTION = "papernet.connection_id";
 export const STORAGE_CLASSROOM = "papernet.classroom_id";
 
 export type DeviceKind = "pc" | "switch" | "router" | "tap";
+
+export type StudentClientKind =
+  | typeof CLIENT_KIND_HOSTED
+  | typeof CLIENT_KIND_STANDALONE;
 
 export type DevicePort = {
   id: string;
@@ -61,6 +66,7 @@ export type SimFrameView = {
   payload: string;
   at_device_id: string;
   status: string;
+  changed: string[];
 };
 
 export type ClaimedScreen = {
@@ -96,7 +102,7 @@ export const ROLE_LABEL: Record<DeviceKind, string> = {
   pc: "PC",
   switch: "交换机",
   router: "路由器",
-  tap: "特殊双口交换机",
+  tap: "网络分流器",
 };
 
 export function roleShell(kind: string | undefined): DeviceKind | null {
@@ -106,17 +112,106 @@ export function roleShell(kind: string | undefined): DeviceKind | null {
   return null;
 }
 
-export function joinBody(connectionId?: string | null): {
-  client_kind: typeof CLIENT_KIND_HOSTED;
+export function deviceTitle(kind: DeviceKind, id: string): string {
+  return `${ROLE_LABEL[kind]} ${id}`;
+}
+
+export function documentTitle(screen: Screen): string {
+  if (screen.kind === "claimed") {
+    return `纸上谈网 · ${deviceTitle(screen.device.kind, screen.device.id)}`;
+  }
+  if (screen.kind === "waiting_open") {
+    return `纸上谈网 · ${MSG_WAITING_OPEN}`;
+  }
+  if (screen.kind === "full") {
+    return `纸上谈网 · ${MSG_CLASSROOM_FULL}`;
+  }
+  return `纸上谈网 · ${screen.message}`;
+}
+
+const KIND_ORDER: Record<DeviceKind, number> = { pc: 0, switch: 1, router: 2, tap: 3 };
+
+export function formatClaimRoster(
+  devices: { kind: DeviceKind; id: string; claimed: boolean }[],
+): { taken: number; total: number; claimed: string; free: string } {
+  const sorted = [...devices].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id.localeCompare(b.id));
+  const claimed = sorted.filter((d) => d.claimed).map((d) => deviceTitle(d.kind, d.id)).join("、");
+  const free = sorted.filter((d) => !d.claimed).map((d) => deviceTitle(d.kind, d.id)).join("、");
+  return {
+    taken: sorted.filter((d) => d.claimed).length,
+    total: sorted.length,
+    claimed,
+    free,
+  };
+}
+
+export function joinBody(
+  connectionId?: string | null,
+  kind: StudentClientKind = CLIENT_KIND_HOSTED,
+  nicMac?: string | null,
+): {
+  client_kind: StudentClientKind;
   connection_id?: string;
+  nic_mac?: string;
 } {
-  const body: { client_kind: typeof CLIENT_KIND_HOSTED; connection_id?: string } = {
-    client_kind: CLIENT_KIND_HOSTED,
+  const body: {
+    client_kind: StudentClientKind;
+    connection_id?: string;
+    nic_mac?: string;
+  } = {
+    client_kind: kind,
   };
   if (connectionId) {
     body.connection_id = connectionId;
   }
+  if (kind === CLIENT_KIND_STANDALONE && nicMac) {
+    body.nic_mac = nicMac;
+  }
   return body;
+}
+
+export function studentClientFromSearch(search = ""): {
+  kind: StudentClientKind;
+  nicMac: string | null;
+  connectionId: string | null;
+} {
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const q = new URLSearchParams(raw);
+  const kind =
+    q.get("client_kind") === CLIENT_KIND_STANDALONE
+      ? CLIENT_KIND_STANDALONE
+      : CLIENT_KIND_HOSTED;
+  const nicMac = (q.get("nic_mac") || "").trim();
+  const connectionId = (q.get("connection_id") || "").trim();
+  return {
+    kind,
+    nicMac: nicMac || null,
+    connectionId: connectionId || null,
+  };
+}
+
+export function currentStudentClient(): {
+  kind: StudentClientKind;
+  nicMac: string | null;
+  connectionId: string | null;
+} {
+  if (typeof location === "undefined") {
+    return { kind: CLIENT_KIND_HOSTED, nicMac: null, connectionId: null };
+  }
+  return studentClientFromSearch(location.search);
+}
+
+export function studentUiUrl(
+  teacherBase: string,
+  nicMac: string,
+  connectionId?: string | null,
+): string {
+  const base = teacherBase.replace(/\/+$/, "");
+  let url = `${base}/student/?client_kind=${CLIENT_KIND_STANDALONE}&nic_mac=${nicMac}`;
+  if (connectionId) {
+    url += `&connection_id=${connectionId}`;
+  }
+  return url;
 }
 
 export function wsPath(connectionId: string, classroomId?: string | null): string {
@@ -227,31 +322,51 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
     if (screen.frame?.frame_id === frame.frame_id) {
       return screen;
     }
-    const chatLog = frame
-      ? [
-          ...screen.chatLog,
-          { from_ip: frame.src_ip, to_ip: frame.dst_ip, text: frame.payload, dir: "sent" as const },
-        ]
-      : screen.chatLog;
-    return { ...screen, frame, chatLog, notice: "" };
+    return {
+      ...screen,
+      frame,
+      chatLog: [
+        ...screen.chatLog,
+        { from_ip: frame.src_ip, to_ip: frame.dst_ip, text: frame.payload, dir: "sent" },
+      ],
+      notice: "",
+    };
   }
-  if (event === "frame.arrived" && screen.kind === "claimed") {
+  if ((event === "frame.arrived" || event === "frame.repack") && screen.kind === "claimed") {
     const frame = parseFrame(root.frame);
-    if (frame?.status === "delivered") {
+    if (!frame) {
+      return screen;
+    }
+    const prev = parseFrame(root.prev_frame) ?? (screen.frame?.frame_id === frame.frame_id ? screen.frame : null);
+    const nextFrame = withChangedFields(frame, prev, screen);
+    if (event === "frame.arrived" && nextFrame.status === "delivered") {
+      const line = {
+        from_ip: nextFrame.src_ip,
+        to_ip: nextFrame.dst_ip,
+        text: nextFrame.payload,
+        dir: "received" as const,
+      };
+      const dup = screen.chatLog.some(
+        (row) =>
+          row.dir === "received" &&
+          row.from_ip === line.from_ip &&
+          row.to_ip === line.to_ip &&
+          row.text === line.text,
+      );
       return {
         ...screen,
-        frame: null,
+        frame: nextFrame,
         notice: "",
-        chatLog: [
-          ...screen.chatLog,
-          { from_ip: frame.src_ip, to_ip: frame.dst_ip, text: frame.payload, dir: "received" },
-        ],
+        chatLog: dup ? screen.chatLog : [...screen.chatLog, line],
       };
     }
-    return { ...screen, frame, notice: "" };
+    return { ...screen, frame: nextFrame, notice: "" };
   }
   if (event === "frame.departed" && screen.kind === "claimed") {
     const id = str(root.frame_id);
+    if (screen.frame && screen.frame.frame_id === id && screen.frame.changed.length) {
+      return screen;
+    }
     return {
       ...screen,
       frame: screen.frame && screen.frame.frame_id === id ? null : screen.frame,
@@ -323,6 +438,27 @@ export function buildInventory(form: InventoryForm) {
     })),
     pcs: numbered("PC", form.pcCount).map((id) => ({ id })),
     taps: numbered("TAP", form.tapCount).map((id) => ({ id })),
+  };
+}
+
+export function targetClassroomInventory() {
+  return {
+    routers: [
+      {
+        id: "R1",
+        port_count: 2,
+        ports: [
+          { id: "R1/01", ip: "192.168.1.1" },
+          { id: "R1/02", ip: "192.168.2.1" },
+        ],
+      },
+    ],
+    switches: [
+      { id: "S1", port_count: 2 },
+      { id: "S2", port_count: 2 },
+    ],
+    pcs: [{ id: "PCA" }, { id: "PCB" }],
+    taps: [] as { id: string }[],
   };
 }
 
@@ -441,7 +577,29 @@ function parseFrame(value: unknown): SimFrameView | null {
     payload: str(rec.payload),
     at_device_id: str(rec.at_device_id),
     status: str(rec.status),
+    changed: Array.isArray(rec.changed)
+      ? rec.changed.filter((item): item is string => typeof item === "string")
+      : [],
   };
+}
+
+const FRAME_FIELDS = ["dst_mac", "src_mac", "src_ip", "dst_ip", "payload"] as const;
+
+function withChangedFields(frame: SimFrameView, prev: SimFrameView | null, screen: ClaimedScreen): SimFrameView {
+  const changed = new Set(frame.changed);
+  if (prev) {
+    for (const field of FRAME_FIELDS) {
+      if (prev[field] !== frame[field]) {
+        changed.add(field);
+      }
+    }
+  } else if (frame.status === "delivered" && screen.device.kind === "pc") {
+    const arpMac = screen.arpTable.find((row) => row.device_id === screen.device.id && row.ip === frame.src_ip)?.mac;
+    if (arpMac && arpMac !== frame.src_mac) {
+      changed.add("src_mac");
+    }
+  }
+  return { ...frame, changed: [...changed] };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

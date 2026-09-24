@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "test": "node ../../scripts/check-f0.mjs && node --experimental-strip-types ../../scripts/check-f1.mjs && node --experimental-strip-types ../../scripts/check-f2.mjs && node --experimental-strip-types ../../scripts/check-f3.mjs && node --experimental-strip-types ../../scripts/check-f4.mjs"
+    "build": "tsc --noEmit && vite build --base /student/",
+    "test": "node ../../scripts/check-f0.mjs && node --experimental-strip-types ../../scripts/check-f1.mjs && node --experimental-strip-types ../../scripts/check-f2.mjs && node --experimental-strip-types ../../scripts/check-f3.mjs && node --experimental-strip-types ../../scripts/check-f4.mjs && node --experimental-strip-types ../../scripts/check-f5.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

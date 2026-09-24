@@ -23,6 +23,9 @@ assert.match(teacherMain, /logical\/router\.svg/);
 assert.match(teacherMain, /setMode/);
 assert.match(teacherMain, /attachTap/);
 
+assert.match(teacherMain, /网络分流器/);
+assert.equal(teacherMain.includes("特殊双口交换机"), false);
+
 const snap = parseTopoSnapshot({
   mode: "normal",
   devices: [

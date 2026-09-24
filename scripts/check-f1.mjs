@@ -5,8 +5,11 @@ import { fileURLToPath } from "node:url";
 import {
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
+  ROLE_LABEL,
   ROLE_SHELL,
   applyWsEvent,
+  documentTitle,
+  formatClaimRoster,
   buildInventory,
   joinBody,
   screenFromHttp,
@@ -63,6 +66,11 @@ const full = screenFromHttp(409, {
 assert.equal(full.kind, "full");
 assert.equal(full.message, MSG_CLASSROOM_FULL);
 
+assert.equal(ROLE_LABEL.tap, "网络分流器");
+assert.equal(documentTitle(waiting), `纸上谈网 · ${MSG_WAITING_OPEN}`);
+assert.equal(documentTitle(full), `纸上谈网 · ${MSG_CLASSROOM_FULL}`);
+assert.equal(documentTitle(claimed), "纸上谈网 · PC PC1");
+
 const granted = applyWsEvent(waiting, {
   event: "claim.granted",
   device: { id: "S1", kind: "switch", ports: [{ id: "S1/01" }] },
@@ -114,6 +122,7 @@ assert.ok(studentMain.includes("MSG_WAITING_OPEN"));
 assert.ok(studentMain.includes("MSG_CLASSROOM_FULL"));
 assert.ok(studentMain.includes("wsPath"));
 assert.ok(studentMain.includes("data-kind"));
+assert.ok(studentMain.includes("documentTitle"));
 
 const studentApi = fs.readFileSync(path.join(root, "web/student/src/api.ts"), "utf8");
 assert.ok(studentApi.includes("/api/v1/classrooms/join"));
@@ -129,5 +138,17 @@ const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), 
 assert.ok(teacherMain.includes("创建课堂"));
 assert.ok(teacherMain.includes("开放领取"));
 assert.ok(teacherMain.includes("@icons/logical/"));
+
+assert.ok(teacherMain.includes("formatClaimRoster"));
+
+const roster = formatClaimRoster([
+  { kind: "tap", id: "TAP1", claimed: false },
+  { kind: "pc", id: "PC1", claimed: true },
+  { kind: "switch", id: "S1", claimed: false },
+]);
+assert.equal(roster.taken, 1);
+assert.equal(roster.total, 3);
+assert.equal(roster.claimed, "PC PC1");
+assert.equal(roster.free, "交换机 S1、网络分流器 TAP1");
 
 console.log("F1 checks passed");

@@ -28,10 +28,14 @@ export function loadClassroomId(): string | null {
   return sessionStorage.getItem(STORAGE_CLASSROOM);
 }
 
-export async function createClassroom(title: string, form: InventoryForm): Promise<string> {
+export async function createClassroom(
+  title: string,
+  form: InventoryForm,
+  inventory = buildInventory(form),
+): Promise<string> {
   const { status, json } = await post("/api/v1/classrooms", {
     title,
-    inventory: buildInventory(form),
+    inventory,
   });
   const id = typeof json.data?.classroom_id === "string" ? json.data.classroom_id : "";
   if (status >= 400 || !id) {

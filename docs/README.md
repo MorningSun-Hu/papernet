@@ -11,6 +11,7 @@
 | 前端界面设计（草案） | `docs/05-前端界面设计.md` |
 | 前端开发实施规划 | `docs/06-前端开发实施规划.md` |
 | 前端后期优化（预览反馈，本阶段不改代码） | `docs/07-前端后期优化.md` |
+| 前端修订记录（F5 联调改正，供归档） | `docs/08-前端修订记录.md` |
 
 EARS 需求原文：`.monkeycode/specs/2026-09-19-classroom-network-sim/requirements.md`
 技术设计索引：`.monkeycode/specs/2026-09-19-classroom-network-sim/design.md`
@@ -24,3 +25,4 @@ EARS 需求原文：`.monkeycode/specs/2026-09-19-classroom-network-sim/requirem
 前端开发实施规划：`docs/06-前端开发实施规划.md`
 前端任务列表：`.monkeycode/specs/2026-09-22-frontend-device-ui/tasklist.md`
 前端后期优化清单：`docs/07-前端后期优化.md`
+前端修订记录：`docs/08-前端修订记录.md`

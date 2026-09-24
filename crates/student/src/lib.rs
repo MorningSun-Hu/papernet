@@ -135,6 +135,16 @@ pub async fn join_classroom(cfg: &StudentConfig, mac: &str) -> Result<JoinResult
     })
 }
 
+pub fn student_ui_url(teacher_base: &str, nic_mac: &str, connection_id: Option<&str>) -> String {
+    let base = teacher_base.trim_end_matches('/');
+    let mut url = format!("{base}/student/?client_kind=student-standalone&nic_mac={nic_mac}");
+    if let Some(id) = connection_id.filter(|s| !s.is_empty()) {
+        url.push_str("&connection_id=");
+        url.push_str(id);
+    }
+    url
+}
+
 pub fn ws_url(http_base: &str, classroom_id: Option<&str>, connection_id: &str) -> String {
     let base = http_base.trim_end_matches('/');
     let ws = if let Some(rest) = base.strip_prefix("https://") {
@@ -250,6 +260,10 @@ pub async fn run() -> Result<(), String> {
     let conn = joined
         .connection_id
         .ok_or_else(|| "join 未返回 connection_id".to_string())?;
+    eprintln!(
+        "open {}",
+        student_ui_url(&cfg.teacher_base, &mac, Some(&conn))
+    );
     let url = ws_url(&cfg.teacher_base, None, &conn);
     maintain_ws(&url, HEARTBEAT_INTERVAL).await
 }
@@ -283,6 +297,14 @@ mod tests {
         assert_eq!(
             ws_url("http://127.0.0.1:8080", Some("c-1"), "n-1"),
             "ws://127.0.0.1:8080/ws?classroom_id=c-1&connection_id=n-1"
+        );
+    }
+
+    #[test]
+    fn student_ui_url_opens_hosted_page() {
+        assert_eq!(
+            student_ui_url("http://127.0.0.1:8080/", "aa:bb:cc:dd:ee:10", Some("n-1")),
+            "http://127.0.0.1:8080/student/?client_kind=student-standalone&nic_mac=aa:bb:cc:dd:ee:10&connection_id=n-1"
         );
     }
 }

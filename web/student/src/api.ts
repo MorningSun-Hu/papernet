@@ -1,5 +1,5 @@
 import {
-  CLIENT_KIND_HOSTED,
+  currentStudentClient,
   joinBody,
   screenFromHttp,
   STORAGE_CONNECTION,
@@ -7,14 +7,27 @@ import {
 } from "@shared/claim";
 import { withoutTapPorts } from "@shared/workbench";
 
+function clientHeaders(connectionId?: string | null): Record<string, string> {
+  const client = currentStudentClient();
+  const headers: Record<string, string> = {
+    "X-Client-Kind": client.kind,
+  };
+  if (connectionId) {
+    headers["X-Connection-Id"] = connectionId;
+  }
+  return headers;
+}
+
 export async function joinClassroom(connectionId?: string | null): Promise<Screen> {
+  const client = currentStudentClient();
+  const conn = connectionId ?? client.connectionId;
   const res = await fetch("/api/v1/classrooms/join", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "X-Client-Kind": CLIENT_KIND_HOSTED,
+      ...clientHeaders(conn),
     },
-    body: JSON.stringify(joinBody(connectionId)),
+    body: JSON.stringify(joinBody(conn, client.kind, client.nicMac)),
   });
   const body = await res.json().catch(() => ({}));
   return screenFromHttp(res.status, body);
@@ -34,10 +47,7 @@ export function persistScreen(screen: Screen): void {
 
 export async function listPeers(connectionId: string): Promise<string[]> {
   const res = await fetch("/api/v1/ports/peers", {
-    headers: {
-      "X-Client-Kind": CLIENT_KIND_HOSTED,
-      "X-Connection-Id": connectionId,
-    },
+    headers: clientHeaders(connectionId),
   });
   const body = await res.json().catch(() => ({}));
   const ports = body?.data?.ports;
@@ -57,8 +67,7 @@ export async function putPort(
       method: "PUT",
       headers: {
         "content-type": "application/json",
-        "X-Client-Kind": CLIENT_KIND_HOSTED,
-        "X-Connection-Id": connectionId,
+        ...clientHeaders(connectionId),
       },
       body: JSON.stringify(patch),
     },
@@ -120,8 +129,7 @@ async function postJson(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "X-Client-Kind": CLIENT_KIND_HOSTED,
-      "X-Connection-Id": connectionId,
+      ...clientHeaders(connectionId),
     },
     body: JSON.stringify(payload),
   });

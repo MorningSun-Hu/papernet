@@ -73,6 +73,29 @@ assert.match(frameHtml, /目的 IP/);
 assert.match(frameHtml, /aa:bb:cc:dd:ee:02/);
 assert.match(frameHtml, /你好/);
 
+assert.match(frameHtml, /打包/);
+assert.match(frameHtml, /frame-cell/);
+
+const delivered = applyWsEvent(pc, {
+  event: "frame.arrived",
+  frame: {
+    frame_id: "F1d",
+    dst_mac: "aa:bb:cc:dd:ee:01",
+    src_mac: "aa:bb:cc:dd:ee:99",
+    src_ip: "192.168.2.10",
+    dst_ip: "192.168.1.10",
+    payload: "你好",
+    at_device_id: "PC1",
+    status: "delivered",
+  },
+});
+assert.equal(delivered.kind, "claimed");
+assert.equal(delivered.frame?.status, "delivered");
+assert.equal(delivered.frame?.payload, "你好");
+const deliveredHtml = renderWorkbench({ ...delivered, mode: "simulation" });
+assert.match(deliveredHtml, /解包/);
+assert.match(deliveredHtml, /消息：你好/);
+
 const pinged = applyPingDetail(pc, "来自 192.168.2.1 的虚拟响应");
 assert.equal(pinged.kind, "claimed");
 assert.match(renderWorkbench(pinged), /来自 192\.168\.2\.1 的虚拟响应/);
@@ -154,6 +177,25 @@ const routerHold = applyWsEvent(
 );
 assert.match(renderWorkbench(routerHold), /模拟选口/);
 assert.match(renderWorkbench(routerHold), /R1\/02/);
+
+assert.match(renderWorkbench(routerHold), /解包查看目的 IP/);
+
+const repacked = applyWsEvent(routerHold, {
+  event: "frame.repack",
+  frame: {
+    frame_id: "F3",
+    dst_mac: "aa:bb:cc:dd:ee:0b",
+    src_mac: "aa:bb:cc:dd:ee:02",
+    src_ip: "192.168.1.10",
+    dst_ip: "192.168.2.10",
+    payload: "你好",
+    at_device_id: "R1",
+    status: "inflight",
+  },
+});
+assert.equal(repacked.kind, "claimed");
+assert.deepEqual(repacked.frame?.changed.sort(), ["dst_mac", "src_mac"]);
+assert.match(renderWorkbench(repacked), /frame-cell changed/);
 
 const tap = applyWsEvent(
   blankClaimed("c-tap", {

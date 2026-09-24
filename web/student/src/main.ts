@@ -7,6 +7,8 @@ import {
   applyNotice,
   applyPingDetail,
   applyWsEvent,
+  currentStudentClient,
+  documentTitle,
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
   ROLE_LABEL,
@@ -55,6 +57,7 @@ let peers: string[] = [];
 
 function render(): void {
   app.innerHTML = htmlFor(screen);
+  document.title = documentTitle(screen);
   if (screen.kind === "claimed") {
     layoutWires(app);
   }
@@ -207,7 +210,8 @@ function scheduleReconnect(connectionId: string): void {
 async function boot(): Promise<void> {
   render();
   try {
-    const next = await joinClassroom(loadConnectionId());
+    const fromUrl = currentStudentClient().connectionId;
+    const next = await joinClassroom(fromUrl || loadConnectionId());
     setScreen(next);
   } catch {
     setScreen({ kind: "error", message: "无法连接教师机" });
@@ -303,7 +307,15 @@ app.addEventListener("submit", (ev) => {
       return;
     }
     void forwardFrame(screen.connectionId, frameId, outPort)
-      .then(() => {
+      .then((body) => {
+        const rec = body as { frame?: unknown };
+        if (rec.frame) {
+          const next = applyWsEvent(screen, { event: "frame.repack", frame: rec.frame });
+          if (next.kind === "claimed" && next.frame?.changed.length) {
+            setScreen(next);
+            return;
+          }
+        }
         setScreen(applyWsEvent(screen, { event: "frame.departed", frame_id: frameId }));
       })
       .catch((err) => {

@@ -72,6 +72,8 @@ Entries discovered by the Agent during task execution should follow this format:
 - 用户要求先做需求分析、目录规划时，先出文档，再开始业务编码
 - 实施与验收以冻结的 `requirements.md` 为准，见条目「需求文档冻结」
 
+ - 冻结文档之外的已落地界面修订，写入 `docs/08-前端修订记录.md`，供后续总结归档；不改 V1.2 冻结原文
+
 [需求文档冻结]
 - Date: 2026-09-20
 - Context: 用户确认 `.monkeycode/specs/2026-09-19-classroom-network-sim/requirements.md` 为已对齐需求，作为实施依据
@@ -118,6 +120,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 用户要求停止预览或服务时立即停止对应进程
   - 冒烟测试使用独立数据文件或临时目录，避免覆盖用户本机数据
   - 前后端分离时，预览入口走前端开发服务器，并把 `/api` 反代到后端
+  - 每个学生页标签都会 join 并占用一个角色；已领角色不回收，多余标签会把课堂领满，再开 TAP/学生页会看到满员文案
 
 [密钥隔离]
 - Date: 2026-09-19
@@ -159,3 +162,9 @@ Entries discovered by the Agent during task execution should follow this format:
   - 教师端思科图标待用户后传；未到前用逻辑几何 SVG 占位
   - 用户要求「先记下来后期优化」的前端画面问题，写入 `docs/07-前端后期优化.md`，不要只留在对话里
   - 该清单本阶段不改代码；当前阶段先保证功能实现
+
+[TAP 中文名]
+- Date: 2026-09-24
+- Context: 用户要求界面不要使用「特殊双口交换机」
+- Instructions:
+  - TAP 对学生/教师可见中文名使用「网络分流器」

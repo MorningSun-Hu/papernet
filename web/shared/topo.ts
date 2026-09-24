@@ -12,6 +12,7 @@ export type TopoPort = {
 export type TopoDevice = {
   id: string;
   kind: DeviceKind;
+  claimed: boolean;
   ports: TopoPort[];
 };
 
@@ -74,6 +75,7 @@ export function parseTopoSnapshot(raw: unknown): TopoSnapshot | null {
     devices.push({
       id,
       kind,
+      claimed: Boolean(d.claimed_connection_id) || d.claimed === true,
       ports: portsRaw.map((p) => {
         const port = asRecord(p);
         return {
@@ -104,6 +106,19 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
     if (mode === "normal" || mode === "simulation") {
       return { ...snap, mode };
     }
+  }
+  if (event === "claim.granted") {
+    const granted = asRecord(rec.device);
+    const id = str(granted.id);
+    if (!id) {
+      return snap;
+    }
+    return {
+      ...snap,
+      devices: snap.devices.map((device) =>
+        device.id === id ? { ...device, claimed: true } : device,
+      ),
+    };
   }
   if (event !== "topology.updated") {
     return snap;
@@ -139,7 +154,7 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
 
 export function buildTopo(snap: TopoSnapshot): TopoView {
   const width = 960;
-  const height = 560;
+  const height = 640;
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
   const row: Record<Exclude<DeviceKind, "tap"> | "tap-free", TopoDevice[]> = {
     pc: [],
