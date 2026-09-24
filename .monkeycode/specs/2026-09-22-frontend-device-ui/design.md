@@ -5,7 +5,7 @@ Created: 2026-09-22
 Status: 草案，待用户确认
 
 ## Description
-学生端交换机与路由器用「无网口底图 + RJ45 叠加」组成角色画面；PC 直接使用已带网口的网卡图。已填写对端的端口用逻辑线指向对端信息框（对端设备编号与端口编号）；`physically_up` 为 true 时在端口侧与信息框侧同时显示绿色圆点。教师端拓扑用逻辑网络设备图标与文字标注表达全班组网关系。本设计落实冻结需求的界面条款与 tasklist 13.1–13.5，不修改 V1.2 冻结文档。
+学生端交换机与路由器用「无网口底图 + RJ45 叠加」组成角色画面；口数大于 8 的交换机改用加高底图。PC 用机箱正面、微信风聊天框、机箱背面横排，背面叠加 1 个 RJ45。已填写对端的端口用逻辑线指向对端信息框（对端设备编号与端口编号）；`physically_up` 为 true 时在端口侧与信息框侧同时显示绿色圆点。对端端口编号用手输。教师端拓扑用逻辑网络设备图标与文字标注表达全班组网关系，节点可拖动。本设计落实冻结需求的界面条款与 tasklist 13.1–13.5，不修改 V1.2 冻结文档。
 
 界面需求原文：`.monkeycode/specs/2026-09-22-frontend-device-ui/requirements.md`
 画面与布局细则：`docs/05-前端界面设计.md`
@@ -46,7 +46,7 @@ flowchart TB
 | 模块 | 职责 |
 | --- | --- |
 | `DeviceStage` | 底图、端口槽位、逻辑线、信息框的舞台容器 |
-| `ChassisView` | 按 `DeviceKind` 加载交换机 / 路由器 / 网卡底图 |
+| `ChassisView` | 按 `DeviceKind` 加载交换机 / 加高交换机 / 路由器 / PC 正反机箱底图 |
 | `Rj45Port` | 单个 RJ45 叠加、`port_id` 标签、端口侧绿点、点击后编辑对端 |
 | `PeerBox` | 对端设备编号、对端 `port_id`、信息框侧绿点 |
 | `LogicLinkLayer` | 从端口中心到信息框左缘的逻辑线 |
@@ -61,8 +61,10 @@ flowchart TB
 | 运行时逻辑名 | 目标路径 | 源文件 |
 | --- | --- | --- |
 | switch chassis | `assets/icons/switch.svg` | `assets/icons/source/无网口灰色交换机正面实物图.png` |
+| switch-many chassis | `assets/icons/switch-many.svg` | 加高交换机底图 |
 | router chassis | `assets/icons/router.svg` | `assets/icons/source/无网口灰色路由器正面实物图.png` |
-| pc chassis | `assets/icons/nic.svg` | `assets/icons/source/网卡正面实物图.png` |
+| pc front | `assets/icons/pc-front.svg` | 机箱正面 |
+| pc back | `assets/icons/pc-back.svg` | 机箱背面 |
 | tap chassis | 复用 `switch.svg` | 同上交换机源图 |
 | rj45 | `assets/icons/rj45.svg` | `assets/icons/source/RJ45端口正面实物图.png` |
 
@@ -91,7 +93,7 @@ flowchart TB
 | 槽位上缘 | 48% |
 | 槽位下缘 | 82% |
 
-N 小于等于 8 时单排均分；N 大于 8 时两排，每排 `ceil(N/2)`。PC 不再叠加 RJ45：热区与绿点锚在网卡图已有插口上，默认坐标 x=18%、y=62%，接入轻量 SVG 后按实图像素校准。
+N 小于等于 8 时单排均分；N 大于 8 时两排，每排 `ceil(N/2)`，并改用加高交换机底图。PC 在机箱背面叠加 1 个 RJ45，默认坐标 x=63%、y=43%。对端端口编号用手输。
 
 ## 逻辑线与绿点
 
@@ -120,12 +122,13 @@ TAP 两口同样走逻辑线。对端枚举仍只给出链路两端设备端口�
 | 对端端口不在当前快照 | 信息框只显示已填的 `peer_port_id` |
 | WS 增量只含部分端口 | 只更新对应线、框、绿点，底图保持 |
 | 教师拓扑设备增删 | 重排逻辑图标位置，保留已有链路样式 |
+| 目标端口已被占用 | HTTP `PORT_BUSY`，界面提示「端口已被占用」 |
 
 ## Test Strategy
 
 1. 交换机 `port_count=4`：底图 1 张，RJ45 4 个，标签为 `S1/01` 至 `S1/04`。
 2. 路由器 `port_count=2`：底图为路由器图，RJ45 2 个。
-3. PC：底图为网卡图，热区对齐图上已有插口，画面上无额外 RJ45 叠加图。
+3. PC：机箱正面、聊天框、机箱背面横排，背面叠加 1 个 RJ45。
 4. TAP：底图为交换机图，RJ45 2 个。
 5. 单端填写 `peer_port_id`：有逻辑线与信息框，两侧无绿点。
 6. 互指成功：两侧绿点出现。
@@ -134,6 +137,10 @@ TAP 两口同样走逻辑线。对端枚举仍只给出链路两端设备端口�
 9. 教师拓扑单端填写：对应链路为虚线。
 10. 教师拓扑互指成功：对应链路为绿色实线。
 11. 教师放置 TAP：TAP 逻辑图标出现在目标链路线段上。
+12. 交换机 `port_count=24`：使用加高底图。
+13. 对端用手输；占用中的端口返回「端口已被占用」。
+14. PC 聊天：发起聊天填 IP，不可达时红底「消息发送失败，对方 IP 不可达」；ping 写入对话。
+15. 教师开放领取后收起定员表；拓扑节点可拖动，连线跟随。
 
 ## References
 

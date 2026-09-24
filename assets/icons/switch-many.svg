@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" role="img" aria-label="Switch">
+  <defs>
+    <linearGradient id="swmTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a8088"/>
+      <stop offset="100%" stop-color="#4e545c"/>
+    </linearGradient>
+    <linearGradient id="swmFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4c5158"/>
+      <stop offset="100%" stop-color="#2f3338"/>
+    </linearGradient>
+    <pattern id="swmVent" width="7" height="8" patternUnits="userSpaceOnUse">
+      <rect x="0.6" y="2.2" width="4.6" height="1.5" rx="0.4" fill="#2a2f35"/>
+    </pattern>
+  </defs>
+  <rect x="12" y="96" width="48" height="188" rx="6" fill="#2c3036"/>
+  <circle cx="36" cy="128" r="8" fill="#d8dce3"/>
+  <circle cx="36" cy="252" r="8" fill="#d8dce3"/>
+  <rect x="940" y="96" width="48" height="188" rx="6" fill="#2c3036"/>
+  <circle cx="964" cy="128" r="8" fill="#d8dce3"/>
+  <circle cx="964" cy="252" r="8" fill="#d8dce3"/>
+  <rect x="52" y="40" width="896" height="268" rx="8" fill="url(#swmFace)"/>
+  <rect x="64" y="40" width="872" height="48" fill="url(#swmTop)"/>
+  <rect x="88" y="54" width="824" height="22" fill="url(#swmVent)"/>
+  <rect id="port-bay" x="72" y="108" width="856" height="176" rx="6" fill="#353a40" stroke="#24282c" stroke-width="2"/>
+  <text x="92" y="98" fill="#eef1f4" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20" font-weight="600">Switch</text>
+</svg>

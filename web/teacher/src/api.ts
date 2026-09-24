@@ -65,6 +65,15 @@ export async function fetchSnapshot(classroomId: string): Promise<unknown> {
   return json.data ?? json;
 }
 
+export async function unbindDevice(classroomId: string, deviceId: string): Promise<void> {
+  const { status, json } = await post(
+    `/api/v1/classrooms/${classroomId}/devices/${encodeURIComponent(deviceId)}/unbind`,
+  );
+  if (status >= 400) {
+    throw new Error(json.error?.message || "解除绑定失败");
+  }
+}
+
 export async function setMode(classroomId: string, mode: "normal" | "simulation"): Promise<string> {
   const { status, json } = await post(`/api/v1/classrooms/${classroomId}/mode`, { mode });
   if (status >= 400) {
@@ -86,4 +95,12 @@ export async function attachTap(
     throw new Error(json.error?.message || "挂接失败");
   }
   return json.data ?? json;
+}
+
+export async function endClassroom(classroomId: string): Promise<void> {
+  const { status, json } = await post(`/api/v1/classrooms/${classroomId}/end`);
+  if (status >= 400) {
+    throw new Error(json.error?.message || "结束课堂失败");
+  }
+  sessionStorage.removeItem(STORAGE_CLASSROOM);
 }

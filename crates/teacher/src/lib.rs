@@ -26,7 +26,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
 use classroom::{Classroom, JoinOutcome, OpenClaimEvent};
-use classroom::{AttachError, CommError, PortError, SimError, SimPush};
+use classroom::{AttachError, CommError, PortError, SimError, SimPush, UnbindError};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -87,6 +87,10 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/api/v1/classrooms/{id}/taps/{tap_id}/attach",
             post(attach_tap),
+        )
+        .route(
+            "/api/v1/classrooms/{id}/devices/{device_id}/unbind",
+            post(unbind_device),
         )
         .route(
             "/api/v1/devices/{device_id}/ports/{*port_id}",
@@ -191,6 +195,7 @@ async fn join_classroom(
                     "status": "claimed",
                     "connection_id": connection_id,
                     "device": device,
+                    "tap_attach": tap_attach_json(&state, &id),
                 }
             })),
         )),
@@ -393,7 +398,7 @@ async fn attach_tap(
     {
         let db = state.db.lock().map_err(|_| internal("db lock"))?;
         if let Some(link_id) = data["link_id"].as_str() {
-            db::insert_tap_attach(&db, &id, &tap_id, link_id)
+            db::upsert_tap_attach(&db, &id, &tap_id, link_id)
                 .map_err(|e| internal(&e.to_string()))?;
         }
     }
@@ -402,6 +407,51 @@ async fn attach_tap(
         hub.broadcast(event);
     }
     Ok((StatusCode::OK, Json(json!({"ok": true, "data": data}))))
+}
+
+async fn unbind_device(
+    State(state): State<AppState>,
+    AxumPath((id, device_id)): AxumPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    if hdr(&headers, "x-client-kind").as_deref() != Some("teacher") {
+        return Err(conflict("NOT_OWNER", "仅教师可解除绑定"));
+    }
+    let (_released, claim_state, device) = {
+        let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
+        let class = store
+            .classrooms
+            .get_mut(&id)
+            .ok_or_else(|| not_found("NO_CLASSROOM", "课堂不存在"))?;
+        let released = class.unbind_device(&device_id).map_err(unbind_err)?;
+        let device = class.devices.get(&device_id).cloned();
+        (released, class.claim_state, device)
+    };
+    {
+        let db = state.db.lock().map_err(|_| internal("db lock"))?;
+        db::update_claim_state(&db, &id, claim_state).map_err(|e| internal(&e.to_string()))?;
+        if let Some(device) = device.as_ref() {
+            db::update_device_claim(&db, &id, device).map_err(|e| internal(&e.to_string()))?;
+        }
+    }
+    if let Ok(hub) = state.hub.lock() {
+        hub.broadcast(json!({
+            "event": "claim.released",
+            "device_id": device_id,
+            "message": MSG_WAITING_OPEN,
+        }));
+    }
+    emit_online(&state, &id);
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "data": {
+                "device_id": device_id,
+                "claim_state": claim_state.as_str(),
+            }
+        })),
+    ))
 }
 
 async fn peer_ports(
@@ -622,6 +672,20 @@ fn emit_online(state: &AppState, classroom_id: &str) {
     }
 }
 
+fn tap_attach_json(state: &AppState, classroom_id: &str) -> Value {
+    let Ok(store) = state.inner.lock() else {
+        return json!([]);
+    };
+    match store.classrooms.get(classroom_id) {
+        Some(class) => json!(class
+            .tap_attaches
+            .iter()
+            .map(|(tap_id, link_id)| json!({"tap_id": tap_id, "link_id": link_id}))
+            .collect::<Vec<_>>()),
+        None => json!([]),
+    }
+}
+
 fn current_classroom_id(store: &Store) -> Option<String> {
     store
         .classrooms
@@ -685,6 +749,11 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
         "event": "hello",
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "mode": mode.as_str(),
+        "tap_attach": q
+            .classroom_id
+            .as_deref()
+            .map(|id| tap_attach_json(&state, id))
+            .unwrap_or_else(|| json!([])),
     });
     if socket
         .send(Message::Text(hello.to_string().into()))
@@ -823,6 +892,7 @@ fn port_err(err: PortError) -> (StatusCode, Json<Value>) {
         PortError::UnknownDevice => not_found("NOT_FOUND", "设备不存在"),
         PortError::UnknownPort => not_found("NOT_FOUND", "端口不存在"),
         PortError::UnknownPeer => bad_request("BAD_REQUEST", "对端端口不存在"),
+        PortError::PortBusy => conflict("PORT_BUSY", "端口已被占用"),
     }
 }
 
@@ -832,7 +902,13 @@ fn attach_err(err: AttachError) -> (StatusCode, Json<Value>) {
         AttachError::NotTap => bad_request("BAD_REQUEST", "该设备不是特殊双口"),
         AttachError::UnknownPort => bad_request("BAD_REQUEST", "端口不存在"),
         AttachError::LinkNotUp => conflict("LINK_NOT_UP", "目标链路未物理连通"),
-        AttachError::AlreadyAttached => conflict("TAP_ATTACHED", "该特殊双口已挂接"),
+    }
+}
+
+fn unbind_err(err: UnbindError) -> (StatusCode, Json<Value>) {
+    match err {
+        UnbindError::UnknownDevice => not_found("NOT_FOUND", "设备不存在"),
+        UnbindError::NotClaimed => conflict("NOT_CLAIMED", "该设备尚未绑定"),
     }
 }
 

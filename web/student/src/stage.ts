@@ -1,9 +1,11 @@
 import { MASK_C, buildStage, type StageModel, type StagePort } from "@shared/stage";
-import { ROLE_LABEL, type Device, type DeviceKind, type LinkView } from "@shared/claim";
+import { ROLE_LABEL, type Device, type DeviceKind, type LinkView, type TapAttachView } from "@shared/claim";
 
 export type StageAssets = {
   chassis: string;
+  front?: string;
   rj45: string;
+  chatHtml?: string;
 };
 
 export function renderStage(
@@ -12,19 +14,26 @@ export function renderStage(
   assets: StageAssets,
   selectedPortId: string | null,
   peers: string[],
+  tapAttach: TapAttachView[] = [],
 ): { html: string; model: StageModel } {
-  const model = buildStage(device, links);
+  const model = buildStage(device, links, tapAttach);
   const selected = model.ports.find((p) => p.portId === selectedPortId) ?? null;
   const html = `
     <section class="stage" data-kind="${model.kind}" data-overlay="${model.overlayCount}">
+      ${
+        model.kind === "pc"
+          ? `<div class="pc-front"><img class="chassis-img" src="${assets.front || assets.chassis}" alt="机箱正面" /></div>
+             <div class="pc-chat">${assets.chatHtml || ""}</div>`
+          : ""
+      }
       <div class="canvas">
         <img class="chassis-img" src="${assets.chassis}" alt="${escapeHtml(ROLE_LABEL[model.kind])}底图" />
         ${model.ports.map((port) => portMarkup(port, assets.rj45)).join("")}
-        <svg class="wires" aria-hidden="true"></svg>
       </div>
       <aside class="peers">
         ${model.boxes.map((port) => boxMarkup(port)).join("")}
       </aside>
+      <svg class="wires" aria-hidden="true"></svg>
     </section>
     ${editorMarkup(model.kind, selected, peers)}
   `;
@@ -65,14 +74,7 @@ function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[])
       </div>
     `;
   }
-  const options = [`<option value="">未接线</option>`]
-    .concat(
-      peers.map((id) => {
-        const selected = id === (port.peerPortId || "") ? " selected" : "";
-        return `<option value="${escapeAttr(id)}"${selected}>${escapeHtml(id)}</option>`;
-      }),
-    )
-    .join("");
+  void peers;
   const ip =
     kind === "pc" || kind === "router"
       ? `<label>IP <input name="ip" value="${escapeAttr(port.ip || "")}" /></label>
@@ -85,7 +87,7 @@ function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[])
   return `
     <form class="port-editor" data-port="${escapeAttr(port.portId)}">
       <p>端口 ${escapeHtml(port.portId)}</p>
-      <label>对端端口 <select name="peer_port_id">${options}</select></label>
+      <label>对端端口 <input name="peer_port_id" value="${escapeAttr(port.peerPortId || "")}" placeholder="例如 S1/01" /></label>
       ${ip}
       ${gw}
       <button type="submit">保存</button>

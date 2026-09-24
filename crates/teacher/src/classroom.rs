@@ -30,6 +30,7 @@ pub struct Classroom {
     pub tap_log: VecDeque<TapLogEntry>,
 }
 
+#[derive(Clone)]
 pub struct Device {
     pub id: String,
     pub kind: DeviceKind,
@@ -74,14 +75,21 @@ pub enum PortError {
     UnknownDevice,
     UnknownPort,
     UnknownPeer,
+    PortBusy,
 }
 
+#[derive(Debug)]
 pub enum AttachError {
     UnknownTap,
     NotTap,
     UnknownPort,
     LinkNotUp,
-    AlreadyAttached,
+}
+
+#[derive(Debug)]
+pub enum UnbindError {
+    UnknownDevice,
+    NotClaimed,
 }
 
 #[derive(Debug)]
@@ -378,8 +386,13 @@ impl Classroom {
             }
         }
         if let Some(peer) = patch.peer_port_id.as_deref() {
-            if self.find_port(peer).is_none() {
-                return Err(PortError::UnknownPeer);
+            if !peer.is_empty() {
+                if self.find_port(peer).is_none() {
+                    return Err(PortError::UnknownPeer);
+                }
+                if self.port_is_busy(peer, port_id) {
+                    return Err(PortError::PortBusy);
+                }
             }
         }
         let kind = self
@@ -407,7 +420,11 @@ impl Classroom {
                 }
             }
             if let Some(peer) = patch.peer_port_id {
-                port.peer_port_id = Some(peer);
+                port.peer_port_id = if peer.is_empty() {
+                    None
+                } else {
+                    Some(peer)
+                };
             }
             port.mask = MASK_C.to_string();
             json!({
@@ -442,9 +459,6 @@ impl Classroom {
         if kind != DeviceKind::Tap {
             return Err(AttachError::NotTap);
         }
-        if self.tap_attaches.contains_key(tap_id) {
-            return Err(AttachError::AlreadyAttached);
-        }
         if self.find_port(port_a).is_none() || self.find_port(port_b).is_none() {
             return Err(AttachError::UnknownPort);
         }
@@ -466,6 +480,28 @@ impl Classroom {
             "port_a": port_a,
             "port_b": port_b,
         }))
+    }
+
+    pub fn unbind_device(&mut self, device_id: &str) -> Result<Option<String>, UnbindError> {
+        let claimed = self
+            .devices
+            .get(device_id)
+            .ok_or(UnbindError::UnknownDevice)?
+            .claimed_connection_id
+            .clone()
+            .ok_or(UnbindError::NotClaimed)?;
+        if let Some(device) = self.devices.get_mut(device_id) {
+            device.claimed_connection_id = None;
+        }
+        if let Some(conn) = self.connections.get_mut(&claimed) {
+            conn.device_id = None;
+        }
+        if self.devices.values().any(|d| d.claimed_connection_id.is_none())
+            && self.claim_state == ClaimState::Full
+        {
+            self.claim_state = ClaimState::Open;
+        }
+        Ok(Some(claimed))
     }
 
     pub fn peer_candidates(&self) -> Vec<String> {
@@ -901,6 +937,23 @@ impl Classroom {
     }
 }
 
+impl Classroom {
+    fn port_is_busy(&self, target: &str, self_port: &str) -> bool {
+        if let Some(port) = self.find_port(target) {
+            if let Some(existing) = port.peer_port_id.as_deref() {
+                if !existing.is_empty() && existing != self_port {
+                    return true;
+                }
+            }
+        }
+        self.devices.values().any(|device| {
+            device.ports.iter().any(|port| {
+                port.id != self_port && port.peer_port_id.as_deref() == Some(target)
+            })
+        })
+    }
+}
+
 fn frame_json(frame: &SimFrame) -> Value {
     json!({
         "frame_id": frame.frame_id,
@@ -1021,5 +1074,73 @@ mod tests {
             .sim_send("missing", "192.168.1.2", "你好")
             .unwrap_err();
         assert!(matches!(err, SimError::UnknownConn));
+    }
+
+    #[test]
+    fn unbind_clears_claim_and_reopens_full_classroom() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.claim_state = ClaimState::Open;
+        let outcome = class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join");
+        let JoinOutcome::Claimed { connection_id, .. } = outcome else {
+            panic!("expected claimed");
+        };
+        assert_eq!(class.claim_state, ClaimState::Full);
+        let released = class.unbind_device("PC1").expect("unbind");
+        assert_eq!(released.as_deref(), Some(connection_id.as_str()));
+        assert!(class.devices["PC1"].claimed_connection_id.is_none());
+        assert!(class.connections[&connection_id].device_id.is_none());
+        assert_eq!(class.claim_state, ClaimState::Open);
+        let again = class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("rejoin");
+        assert!(matches!(again, JoinOutcome::Claimed { .. }));
+    }
+
+    fn set_peer(class: &mut Classroom, port_id: &str, peer: Option<&str>) {
+        for device in class.devices.values_mut() {
+            if let Some(port) = device.ports.iter_mut().find(|p| p.id == port_id) {
+                port.peer_port_id = peer.map(str::to_string);
+            }
+        }
+    }
+
+    #[test]
+    fn attach_tap_overwrites_previous_link() {
+        use papernet_shared::{RouterSpec, SwitchSpec, TapSpec};
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }],
+            switches: vec![SwitchSpec {
+                id: "S1".into(),
+                port_count: 2,
+            }],
+            routers: vec![RouterSpec {
+                id: "R1".into(),
+                port_count: 2,
+                ports: vec![],
+            }],
+            taps: vec![TapSpec { id: "TAP1".into() }],
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        set_peer(&mut class, "PC1/01", Some("S1/01"));
+        set_peer(&mut class, "S1/01", Some("PC1/01"));
+        set_peer(&mut class, "S1/02", Some("R1/01"));
+        set_peer(&mut class, "R1/01", Some("S1/02"));
+        class.rebuild_tables();
+        class
+            .attach_tap("TAP1", "PC1/01", "S1/01")
+            .expect("first attach");
+        class
+            .attach_tap("TAP1", "S1/02", "R1/01")
+            .expect("move attach");
+        assert_eq!(
+            class.tap_attaches.get("TAP1").cloned(),
+            Some(link_id_for("S1/02", "R1/01"))
+        );
     }
 }

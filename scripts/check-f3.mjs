@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import {
   MSG_WRONG_PORT,
+  MSG_CHAT_UNREACHABLE,
   applyNotice,
+  MSG_PORT_BUSY,
+  applyChatError,
   applyPingDetail,
   applyWsEvent,
   blankClaimed,
   screenFromHttp,
 } from "../web/shared/claim.ts";
-import { renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
+import { renderPcChat, renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
 
 assert.equal(MSG_WRONG_PORT, "端口不正确");
+assert.equal(MSG_PORT_BUSY, "端口已被占用");
 assert.deepEqual(withoutTapPorts(["S1/01", "TAP1/01", "R1/01", "PC1/01"]), [
   "S1/01",
   "R1/01",
@@ -29,6 +33,9 @@ const pcHtml = renderWorkbench(pc);
 assert.match(pcHtml, /对话窗口/);
 assert.match(pcHtml, /ARP 表/);
 assert.match(pcHtml, /ping/);
+assert.match(pcHtml, /发起聊天/);
+assert.match(renderPcChat(pc), /发起聊天/);
+assert.match(renderPcChat(pc), /data-chat-ping/);
 
 const talked = applyWsEvent(
   applyWsEvent(pc, {
@@ -99,6 +106,11 @@ assert.match(deliveredHtml, /消息：你好/);
 const pinged = applyPingDetail(pc, "来自 192.168.2.1 的虚拟响应");
 assert.equal(pinged.kind, "claimed");
 assert.match(renderWorkbench(pinged), /来自 192\.168\.2\.1 的虚拟响应/);
+
+const unreachable = applyChatError(pc, MSG_CHAT_UNREACHABLE);
+assert.equal(unreachable.kind, "claimed");
+assert.match(renderWorkbench(unreachable), /消息发送失败，对方 IP 不可达/);
+assert.match(renderWorkbench(unreachable), /chat-fail/);
 
 const sw = blankClaimed("c-sw", {
   id: "S1",
@@ -179,6 +191,10 @@ assert.match(renderWorkbench(routerHold), /模拟选口/);
 assert.match(renderWorkbench(routerHold), /R1\/02/);
 
 assert.match(renderWorkbench(routerHold), /解包查看目的 IP/);
+assert.match(renderWorkbench(routerHold), /data-step="recv"/);
+assert.match(renderWorkbench(routerHold), /data-step="net"/);
+assert.match(renderWorkbench(routerHold), /data-step="pack"/);
+assert.match(renderWorkbench(routerHold), /选出口后改写 MAC/);
 
 const repacked = applyWsEvent(routerHold, {
   event: "frame.repack",
@@ -196,6 +212,9 @@ const repacked = applyWsEvent(routerHold, {
 assert.equal(repacked.kind, "claimed");
 assert.deepEqual(repacked.frame?.changed.sort(), ["dst_mac", "src_mac"]);
 assert.match(renderWorkbench(repacked), /frame-cell changed/);
+assert.match(renderWorkbench(repacked), /data-step="recv"/);
+assert.match(renderWorkbench(repacked), /重新打包的数据帧/);
+assert.equal(renderWorkbench(repacked).includes("选出口后改写 MAC"), false);
 
 const tap = applyWsEvent(
   blankClaimed("c-tap", {

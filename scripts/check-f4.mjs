@@ -22,6 +22,15 @@ const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), 
 assert.match(teacherMain, /logical\/router\.svg/);
 assert.match(teacherMain, /setMode/);
 assert.match(teacherMain, /attachTap/);
+assert.match(teacherMain, /unbindDevice/);
+assert.match(teacherMain, /contextmenu/);
+assert.match(teacherMain, /解除绑定/);
+assert.match(teacherMain, /挂接网络分流器/);
+assert.equal(teacherMain.includes("!snap!.tapAttach.some"), false);
+assert.match(teacherMain, /结束课堂/);
+assert.match(teacherMain, /endClassroom/);
+assert.match(teacherMain, /pointerdown/);
+assert.match(teacherMain, /bindTopoDrag/);
 
 assert.match(teacherMain, /网络分流器/);
 assert.equal(teacherMain.includes("特殊双口交换机"), false);
@@ -57,6 +66,9 @@ const snap = parseTopoSnapshot({
 assert.ok(snap);
 const view = buildTopo(snap);
 const kinds = new Set(view.nodes.map((n) => n.kind));
+const moved = buildTopo(snap, { PC1: { x: 12, y: 34 } });
+assert.equal(moved.nodes.find((n) => n.id === "PC1")?.x, 12);
+assert.equal(moved.nodes.find((n) => n.id === "PC1")?.y, 34);
 assert.deepEqual([...kinds].sort(), ["pc", "router", "switch", "tap"]);
 assert.ok(view.nodes.every((n) => n.labels[0] === n.id));
 assert.ok(view.nodes.find((n) => n.id === "PC1")?.labels.some((l) => l.includes("PC1/01")));
@@ -84,5 +96,16 @@ assert.equal(tap?.y, (edge.y1 + edge.y2) / 2);
 
 const sim = applyTopoEvent(snap, { event: "mode.changed", mode: "simulation" });
 assert.equal(sim.mode, "simulation");
+
+const canvasSrc = fs.readFileSync(path.join(root, "web/teacher/src/canvas.ts"), "utf8");
+assert.match(canvasSrc, /data-claimed/);
+
+const granted = applyTopoEvent(snap, {
+  event: "claim.granted",
+  device: { id: "PC1" },
+});
+assert.equal(granted.devices.find((d) => d.id === "PC1")?.claimed, true);
+const freed = applyTopoEvent(granted, { event: "claim.released", device_id: "PC1" });
+assert.equal(freed.devices.find((d) => d.id === "PC1")?.claimed, false);
 
 console.log("F4 checks passed");

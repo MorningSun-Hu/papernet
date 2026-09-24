@@ -256,6 +256,17 @@ main {
   color: #9dba96;
   font-size: 0.75rem;
 }
+.encap-step {
+  margin-bottom: 10px;
+}
+.encap-step .encap-label {
+  margin: 0 0 6px;
+}
+.encap-wait {
+  margin: 0;
+  color: #b7c9b0;
+  font-size: 0.88rem;
+}
 .frame-strip {
   display: flex;
   flex-wrap: wrap;
@@ -302,6 +313,123 @@ main {
 }
 .fwd-port {
   margin-right: 8px;
+}
+.stage[data-kind="pc"] {
+  grid-template-columns: minmax(110px, 0.7fr) minmax(240px, 1.2fr) minmax(110px, 0.7fr) minmax(140px, 0.55fr);
+  gap: 0;
+  align-items: stretch;
+}
+.pc-front,
+.pc-chat,
+.stage[data-kind="pc"] .canvas {
+  background: #0f1a13;
+}
+.pc-front,
+.stage[data-kind="pc"] .canvas {
+  padding: 10px;
+}
+.stage[data-kind="pc"] .port {
+  width: 28%;
+  min-width: 52px;
+}
+.pc-chat {
+  display: flex;
+  min-height: 360px;
+}
+.wx {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #ededed;
+  color: #111;
+  min-height: 360px;
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.wx-hd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: #2e2e2e;
+  color: #fff;
+  padding: 10px 12px;
+}
+.wx-hd h2 {
+  margin: 0;
+  font-size: 1rem;
+  flex: 1 1 auto;
+}
+.wx-peer {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #d4d4d4;
+}
+.wx-hd button {
+  font: inherit;
+  padding: 4px 10px;
+  border: 0;
+  background: #07c160;
+  color: #fff;
+  cursor: pointer;
+}
+.wx-hd button[disabled] {
+  opacity: 0.45;
+}
+.chat-fail {
+  margin: 0;
+  padding: 8px 12px;
+  background: #fecaca;
+  color: #7f1d1d;
+}
+.wx-peer-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.wx-log {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  margin: 0;
+  list-style: none;
+}
+.wx-bubble {
+  max-width: 80%;
+  padding: 8px 10px;
+  margin: 8px 0;
+  border-radius: 6px;
+  clear: both;
+}
+.wx-bubble[data-dir="sent"] {
+  background: #95ec69;
+  margin-left: auto;
+}
+.wx-bubble[data-dir="received"] {
+  background: #fff;
+  margin-right: auto;
+}
+.wx-meta {
+  display: block;
+  font-size: 0.7rem;
+  color: #4b5563;
+  margin-bottom: 4px;
+}
+.wx .chat-form {
+  display: flex;
+  gap: 8px;
+  max-width: none;
+  margin: 0;
+  padding: 8px;
+  background: #f7f7f7;
+}
+.wx .chat-form input[name="text"] {
+  flex: 1;
+}
+.wx-hint {
+  margin: 0;
+  padding: 12px;
+  color: #6b7280;
 }
 @media (max-width: 720px) {
   .stage {

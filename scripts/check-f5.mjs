@@ -232,6 +232,19 @@ async function walkClassroom(base) {
     assert.equal(res.status, 200, `put ${portId} ${JSON.stringify(res.json)}`);
   }
 
+  const busy = await api(base, "PUT", "/api/v1/devices/PCA/ports/PCA/01", {
+    headers: hdr(byId.PCA.conn),
+    body: { peer_port_id: "S2/01" },
+  });
+  assert.equal(busy.status, 409, JSON.stringify(busy.json));
+  assert.equal(busy.json.error.code, "PORT_BUSY");
+  assert.equal(busy.json.error.message, "端口已被占用");
+  const keep = await api(base, "PUT", "/api/v1/devices/PCA/ports/PCA/01", {
+    headers: hdr(byId.PCA.conn),
+    body: { peer_port_id: "S1/01" },
+  });
+  assert.equal(keep.status, 200, JSON.stringify(keep.json));
+
   const snap1 = await api(base, "GET", `/api/v1/classrooms/${classroomId}/snapshot`, {
     headers: { "x-client-kind": "teacher" },
   });

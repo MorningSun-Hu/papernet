@@ -208,14 +208,15 @@ pub fn replace_links(
     Ok(())
 }
 
-pub fn insert_tap_attach(
+pub fn upsert_tap_attach(
     conn: &Connection,
     classroom_id: &str,
     tap_id: &str,
     link_id: &str,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO tap_attach (classroom_id, tap_id, link_id) VALUES (?1, ?2, ?3)",
+        "INSERT INTO tap_attach (classroom_id, tap_id, link_id) VALUES (?1, ?2, ?3)
+         ON CONFLICT(classroom_id, tap_id) DO UPDATE SET link_id = excluded.link_id",
         rusqlite::params![classroom_id, tap_id, link_id],
     )?;
     Ok(())

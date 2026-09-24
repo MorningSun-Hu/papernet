@@ -19,7 +19,12 @@ assert.ok(sizeOf("router.svg") < 40 * 1024, "router.svg too large");
 assert.ok(sizeOf("nic.svg") < 40 * 1024, "nic.svg too large");
 assert.ok(sizeOf("rj45.svg") < 8 * 1024, "rj45.svg too large");
 
-for (const name of ["switch.svg", "router.svg", "nic.svg", "rj45.svg"]) {
+for (const name of ["switch-many.svg", "pc-front.svg", "pc-back.svg"]) {
+  assert.ok(fs.existsSync(path.join(icons, name)), `missing ${name}`);
+  assert.ok(sizeOf(name) < 40 * 1024, `${name} too large`);
+}
+
+for (const name of ["switch.svg", "router.svg", "nic.svg", "rj45.svg", "switch-many.svg", "pc-front.svg", "pc-back.svg"]) {
   const text = fs.readFileSync(path.join(icons, name), "utf8");
   assert.equal(text.includes("source/"), false, `${name} must not reference source/`);
   assert.ok(text.length < 80_000, `${name} looks like a traced dump`);
@@ -41,7 +46,9 @@ for (const app of ["student", "teacher"]) {
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.ok(studentMain.includes("switch.svg"));
 assert.ok(studentMain.includes("router.svg"));
-assert.ok(studentMain.includes("nic.svg"));
+assert.ok(studentMain.includes("switch-many.svg"));
+assert.ok(studentMain.includes("pc-front.svg"));
+assert.ok(studentMain.includes("pc-back.svg"));
 assert.ok(studentMain.includes("rj45.svg"));
 
 console.log("F0 checks passed");

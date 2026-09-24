@@ -1,9 +1,12 @@
 import "./style.css";
 import switchUrl from "@icons/switch.svg?url";
 import routerUrl from "@icons/router.svg?url";
-import nicUrl from "@icons/nic.svg?url";
+import switchManyUrl from "@icons/switch-many.svg?url";
+import pcFrontUrl from "@icons/pc-front.svg?url";
+import pcBackUrl from "@icons/pc-back.svg?url";
 import rj45Url from "@icons/rj45.svg?url";
 import {
+  applyChatError,
   applyNotice,
   applyPingDetail,
   applyWsEvent,
@@ -11,12 +14,14 @@ import {
   documentTitle,
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
+  MSG_CHAT_UNREACHABLE,
   ROLE_LABEL,
   ROLE_SHELL,
   wsPath,
   type Screen,
 } from "@shared/claim";
-import { renderWorkbench, withoutTapPorts } from "@shared/workbench";
+import { renderPcChat, renderWorkbench, withoutTapPorts } from "@shared/workbench";
+import { switchChassisKind } from "@shared/stage";
 import {
   ApiError,
   forwardFrame,
@@ -41,12 +46,18 @@ function mount(): HTMLDivElement {
   return el;
 }
 
-const CHASSIS: Record<string, string> = {
-  pc: nicUrl,
-  switch: switchUrl,
-  router: routerUrl,
-  tap: switchUrl,
-};
+function chassisFor(kind: string, portCount: number): string {
+  if (kind === "pc") {
+    return pcBackUrl;
+  }
+  if (kind === "router") {
+    return routerUrl;
+  }
+  if (kind === "switch" && switchChassisKind(portCount) === "switch-many") {
+    return switchManyUrl;
+  }
+  return switchUrl;
+}
 
 let screen: Screen = { kind: "idle", message: "正在加入课堂…" };
 let socket: WebSocket | null = null;
@@ -87,13 +98,20 @@ function board(message: string, tone: string): string {
 
 function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
   const shell = ROLE_SHELL[s.device.kind];
-  const chassis = CHASSIS[s.device.kind] ?? switchUrl;
+  const chassis = chassisFor(s.device.kind, s.device.ports.length);
+  const isPc = s.device.kind === "pc";
   const stage = renderStage(
     s.device,
     s.links,
-    { chassis, rj45: rj45Url },
+    {
+      chassis,
+      front: isPc ? pcFrontUrl : undefined,
+      rj45: rj45Url,
+      chatHtml: isPc ? renderPcChat(s) : undefined,
+    },
     selectedPortId,
     withoutTapPorts(peers.filter((id) => !id.startsWith(`${s.device.id}/`))),
+    s.tapAttach,
   );
   return `
     <main class="shell" data-kind="${shell}">
@@ -103,7 +121,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         <p class="device-id">${escapeHtml(s.device.id)}</p>
       </header>
       ${stage.html}
-      ${renderWorkbench(s)}
+      ${renderWorkbench(s, { chatInStage: isPc })}
     </main>
   `;
 }
@@ -219,7 +237,31 @@ async function boot(): Promise<void> {
 }
 
 app.addEventListener("click", (ev) => {
-  const btn = (ev.target as HTMLElement).closest<HTMLElement>(".port");
+  const target = ev.target as HTMLElement;
+  if (target.closest("[data-chat-start]") && screen.kind === "claimed") {
+    setScreen({ ...screen, chatPrompt: true, chatError: "" });
+    return;
+  }
+  if (target.closest("[data-chat-ping]") && screen.kind === "claimed") {
+    const toIp = screen.chatPeerIp;
+    if (!toIp) {
+      return;
+    }
+    void sendPing(screen.connectionId, toIp)
+      .then((res) => {
+        setScreen(applyPingDetail(screen, res.detail));
+      })
+      .catch((err) => {
+        const unreachable = err instanceof ApiError && err.code === "UNREACHABLE";
+        setScreen(
+          unreachable
+            ? applyChatError(screen, MSG_CHAT_UNREACHABLE)
+            : applyNotice(screen, err instanceof ApiError ? err.message : "ping 失败"),
+        );
+      });
+    return;
+  }
+  const btn = target.closest<HTMLElement>(".port");
   if (!btn?.dataset.port) {
     return;
   }
@@ -240,9 +282,7 @@ app.addEventListener("submit", (ev) => {
   const data = new FormData(form);
   const patch: { ip?: string; gateway?: string; peer_port_id?: string } = {};
   const peer = String(data.get("peer_port_id") || "");
-  if (peer) {
-    patch.peer_port_id = peer;
-  }
+  patch.peer_port_id = peer;
   const ip = String(data.get("ip") || "");
   if (ip) {
     patch.ip = ip;
@@ -255,8 +295,8 @@ app.addEventListener("submit", (ev) => {
     .then((body) => {
       setScreen(applyWsEvent(screen, { event: "topology.updated", ...(body as object) }));
     })
-    .catch(() => {
-      /* keep current stage */
+    .catch((err) => {
+      setScreen(applyNotice(screen, err instanceof Error ? err.message : "保存端口失败"));
     });
 });
 
@@ -281,8 +321,19 @@ app.addEventListener("submit", (ev) => {
         }
       })
       .catch((err) => {
-        setScreen(applyNotice(screen, err instanceof ApiError ? err.message : "发送失败"));
+        const unreachable = err instanceof ApiError && err.code === "UNREACHABLE";
+        setScreen(
+          unreachable
+            ? applyChatError(screen, MSG_CHAT_UNREACHABLE)
+            : applyNotice(screen, err instanceof ApiError ? err.message : "发送失败"),
+        );
       });
+    return;
+  }
+  if (form.classList.contains("wx-peer-form")) {
+    ev.preventDefault();
+    const ip = String(new FormData(form).get("peer_ip") || "").trim();
+    setScreen({ ...screen, chatPeerIp: ip, chatPrompt: false, chatError: "" });
     return;
   }
   if (form.classList.contains("ping-form")) {

@@ -461,3 +461,56 @@ async fn standalone_and_hosted_share_pool() {
     assert_ne!(hosted_mac, nic);
     assert!(is_unicast_mac(hosted_mac));
 }
+
+#[tokio::test]
+async fn teacher_unbind_releases_role_for_reclaim() {
+    let (state, _dir) = state();
+    let id = create_with_pcs(state.clone(), 1).await;
+    post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    let (st, claimed) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let device_id = claimed["data"]["device"]["id"].as_str().unwrap();
+    let full = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(full.0, StatusCode::CONFLICT);
+
+    let res = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&format!(
+                    "/api/v1/classrooms/{id}/devices/{device_id}/unbind"
+                ))
+                .header("content-type", "application/json")
+                .header("x-client-kind", "teacher")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let (st2, again) = post(
+        state,
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st2, StatusCode::OK);
+    assert_eq!(again["data"]["status"], "claimed");
+    assert_eq!(again["data"]["device"]["id"], device_id);
+}

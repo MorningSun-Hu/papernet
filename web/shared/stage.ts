@@ -1,4 +1,4 @@
-import type { Device, DeviceKind, LinkView } from "./claim";
+import type { Device, DeviceKind, LinkView, TapAttachView } from "./claim";
 
 export const MASK_C = "255.255.255.0";
 
@@ -28,14 +28,20 @@ export function deviceIdFromPort(portId: string): string {
   return cut === -1 ? portId : portId.slice(0, cut);
 }
 
-export function buildStage(device: Device, links: LinkView[]): StageModel {
-  const overlay = device.kind !== "pc";
+export function buildStage(device: Device, links: LinkView[], tapAttach: TapAttachView[] = []): StageModel {
+  const overlay = true;
   const coords =
     device.kind === "pc"
-      ? device.ports.map(() => ({ x: 18, y: 62 }))
+      ? device.ports.map(() => ({ x: 63, y: 43 }))
       : slotPositions(device.ports.length);
+  const hang = hungLink(device.id, links, tapAttach);
   const ports: StagePort[] = device.ports.map((port, i) => {
-    const peerPortId = port.peer_port_id ? port.peer_port_id : null;
+    let peerPortId = port.peer_port_id ? port.peer_port_id : null;
+    let physicallyUp = isUp(port.id, links, tapAttach);
+    if (device.kind === "tap" && hang) {
+      peerPortId = i === 0 ? hang.port_a : hang.port_b;
+      physicallyUp = hang.physically_up;
+    }
     return {
       portId: port.id,
       overlay,
@@ -43,7 +49,7 @@ export function buildStage(device: Device, links: LinkView[]): StageModel {
       y: coords[i]?.y ?? 65,
       peerPortId,
       peerDeviceId: peerPortId ? deviceIdFromPort(peerPortId) : null,
-      physicallyUp: isUp(port.id, links),
+      physicallyUp,
       ip: port.ip ?? null,
       gateway: port.gateway ?? null,
       mask: port.mask || MASK_C,
@@ -58,11 +64,26 @@ export function buildStage(device: Device, links: LinkView[]): StageModel {
   };
 }
 
-function isUp(portId: string, links: LinkView[]): boolean {
-  return links.some(
-    (link) =>
-      link.physically_up && (link.port_a === portId || link.port_b === portId),
-  );
+function hungLink(deviceId: string, links: LinkView[], tapAttach: TapAttachView[]): LinkView | undefined {
+  const row = tapAttach.find((item) => item.tap_id === deviceId);
+  if (!row) {
+    return undefined;
+  }
+  return links.find((link) => link.link_id === row.link_id);
+}
+
+function isUp(portId: string, links: LinkView[], tapAttach: TapAttachView[]): boolean {
+  if (
+    links.some(
+      (link) => link.physically_up && (link.port_a === portId || link.port_b === portId),
+    )
+  ) {
+    return true;
+  }
+  return tapAttach.some((row) => {
+    const link = links.find((item) => item.link_id === row.link_id);
+    return Boolean(link && (link.port_a === portId || link.port_b === portId));
+  });
 }
 
 function slotPositions(n: number): { x: number; y: number }[] {
@@ -89,4 +110,9 @@ function slotPositions(n: number): { x: number; y: number }[] {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+export const SWITCH_MANY_PORTS = 8;
+
+export function switchChassisKind(portCount: number): "switch" | "switch-many" {
+  return portCount > SWITCH_MANY_PORTS ? "switch-many" : "switch";
 }

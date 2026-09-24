@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyWsEvent, screenFromHttp } from "../web/shared/claim.ts";
-import { MASK_C, buildStage, deviceIdFromPort } from "../web/shared/stage.ts";
+import { MASK_C, buildStage, deviceIdFromPort, switchChassisKind } from "../web/shared/stage.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -46,11 +46,13 @@ const pcStage = buildStage(
   { id: "PC1", kind: "pc", ports: [{ id: "PC1/01" }] },
   [],
 );
-assert.equal(pcStage.overlayCount, 0);
 assert.equal(pcStage.ports.length, 1);
-assert.equal(pcStage.ports[0].overlay, false);
-assert.equal(pcStage.ports[0].x, 18);
-assert.equal(pcStage.ports[0].y, 62);
+assert.equal(pcStage.overlayCount, 1);
+assert.equal(pcStage.ports[0].overlay, true);
+assert.equal(pcStage.ports[0].x, 63);
+assert.equal(pcStage.ports[0].y, 43);
+assert.equal(switchChassisKind(8), "switch");
+assert.equal(switchChassisKind(24), "switch-many");
 
 const tapStage = buildStage(
   {
@@ -105,6 +107,46 @@ const mutual = buildStage(
 assert.equal(mutual.ports[0].physicallyUp, true);
 assert.equal(mutual.boxes[0].physicallyUp, true);
 
+const tapHung = buildStage(
+  {
+    id: "TAP1",
+    kind: "tap",
+    ports: [{ id: "TAP1/01" }, { id: "TAP1/02" }],
+  },
+  [
+    {
+      link_id: "PC1/01--S1/01",
+      port_a: "PC1/01",
+      port_b: "S1/01",
+      physically_up: true,
+    },
+  ],
+  [{ tap_id: "TAP1", link_id: "PC1/01--S1/01" }],
+);
+assert.equal(tapHung.ports[0].physicallyUp, true);
+assert.equal(tapHung.ports[1].physicallyUp, true);
+assert.equal(tapHung.ports[0].peerPortId, "PC1/01");
+assert.equal(tapHung.ports[1].peerPortId, "S1/01");
+assert.equal(tapHung.boxes.length, 2);
+
+const endLit = buildStage(
+  {
+    id: "S1",
+    kind: "switch",
+    ports: [{ id: "S1/01", peer_port_id: "PC1/01" }],
+  },
+  [
+    {
+      link_id: "PC1/01--S1/01",
+      port_a: "PC1/01",
+      port_b: "S1/01",
+      physically_up: true,
+    },
+  ],
+  [{ tap_id: "TAP1", link_id: "PC1/01--S1/01" }],
+);
+assert.equal(endLit.ports[0].physicallyUp, true);
+
 const claimed = screenFromHttp(200, {
   ok: true,
   data: {
@@ -133,6 +175,18 @@ assert.equal(patched.kind, "claimed");
 assert.equal(patched.device.ports[0].peer_port_id, "PC1/01");
 assert.equal(patched.links[0].physically_up, false);
 
+const withTap = applyWsEvent(patched, {
+  event: "topology.updated",
+  tap_attach: { tap_id: "TAP1", link_id: "L2" },
+});
+assert.equal(withTap.kind, "claimed");
+assert.equal(withTap.tapAttach[0]?.tap_id, "TAP1");
+
+const ignored = applyWsEvent(withTap, { event: "claim.released", device_id: "PC1" });
+assert.equal(ignored.kind, "claimed");
+const released = applyWsEvent(withTap, { event: "claim.released", device_id: "S1" });
+assert.equal(released.kind, "waiting_open");
+
 const studentStage = fs.readFileSync(path.join(root, "web/student/src/stage.ts"), "utf8");
 assert.ok(studentStage.includes("data-overlay"));
 assert.ok(studentStage.includes("peer-device"));
@@ -148,5 +202,8 @@ assert.ok(studentApi.includes("/api/v1/ports/peers"));
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.ok(studentMain.includes("renderStage"));
 assert.ok(studentMain.includes("putPort"));
+
+assert.ok(studentStage.includes('name="peer_port_id"'));
+assert.equal(studentStage.includes("<select name=\"peer_port_id\">"), false);
 
 console.log("F2 checks passed");

@@ -176,6 +176,52 @@ async fn one_sided_peer_keeps_link_down() {
 }
 
 #[tokio::test]
+async fn occupied_peer_port_is_rejected() {
+    let (state, _dir) = state();
+    let id = create_lab(state.clone()).await;
+    let roles = claim_roles(state.clone(), &id).await;
+    let (pc_conn, pc) = by_kind(&roles, "pc");
+    let (sw_conn, sw) = by_kind(&roles, "switch");
+    let (r_conn, r) = by_kind(&roles, "router");
+    put_port(
+        state.clone(),
+        pc_conn,
+        pc["id"].as_str().unwrap(),
+        "PC1/01",
+        json!({"peer_port_id": "S1/01"}),
+    )
+    .await;
+    put_port(
+        state.clone(),
+        sw_conn,
+        sw["id"].as_str().unwrap(),
+        "S1/01",
+        json!({"peer_port_id": "PC1/01"}),
+    )
+    .await;
+    let (st, v) = put_port(
+        state.clone(),
+        r_conn,
+        r["id"].as_str().unwrap(),
+        "R1/01",
+        json!({"peer_port_id": "S1/01"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert_eq!(v["error"]["code"], "PORT_BUSY");
+    assert_eq!(v["error"]["message"], "端口已被占用");
+    let (st, _) = put_port(
+        state.clone(),
+        pc_conn,
+        pc["id"].as_str().unwrap(),
+        "PC1/01",
+        json!({"peer_port_id": "S1/01"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn mutual_peer_fills_switch_mac_table() {
     let (state, _dir) = state();
     let id = create_lab(state.clone()).await;
@@ -388,6 +434,36 @@ async fn tap_attach_on_up_link_and_ws_patch_under_4kb() {
     .await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["data"]["tap_id"], "TAP1");
+    let first_link = v["data"]["link_id"].as_str().unwrap().to_string();
+
+    let (r_conn, router) = by_kind(&roles, "router");
+    put_port(
+        state.clone(),
+        sw_conn,
+        sw["id"].as_str().unwrap(),
+        "S1/02",
+        json!({"peer_port_id": "R1/01"}),
+    )
+    .await;
+    put_port(
+        state.clone(),
+        r_conn,
+        router["id"].as_str().unwrap(),
+        "R1/01",
+        json!({"peer_port_id": "S1/02"}),
+    )
+    .await;
+    let (st2, v2) = send(
+        state.clone(),
+        "POST",
+        &format!("/api/v1/classrooms/{id}/taps/TAP1/attach"),
+        &[("x-client-kind", "teacher")],
+        Some(json!({"link": {"port_a": "S1/02", "port_b": "R1/01"}})),
+    )
+    .await;
+    assert_eq!(st2, StatusCode::OK);
+    assert_eq!(v2["data"]["tap_id"], "TAP1");
+    assert_ne!(v2["data"]["link_id"].as_str().unwrap(), first_link);
 }
 
 #[tokio::test]

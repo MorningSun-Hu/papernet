@@ -30,6 +30,20 @@ main {
   margin: 0 0 8px;
   font-family: "Segoe UI", Helvetica, Arial, sans-serif;
 }
+.ctx-menu {
+  position: fixed;
+  z-index: 20;
+  background: #f4efe4;
+  border: 1px solid #2a2418;
+  box-shadow: 4px 5px 0 #6d5633;
+  padding: 4px;
+}
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  background: #7a1f1f;
+  border-color: #7a1f1f;
+}
 .icons {
   display: flex;
   gap: 10px;
@@ -128,4 +142,14 @@ button[disabled] {
   font-size: 11px;
   fill: #334155;
   font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.topo .node {
+  cursor: grab;
+}
+.topo .node:active {
+  cursor: grabbing;
+}
+#end {
+  background: #7a1f1f;
+  border-color: #7a1f1f;
 }

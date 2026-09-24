@@ -35,6 +35,7 @@ export type TopoNode = {
   y: number;
   labels: string[];
   onLink: string | null;
+  claimed: boolean;
 };
 
 export type TopoEdge = {
@@ -54,6 +55,8 @@ export type TopoView = {
   nodes: TopoNode[];
   edges: TopoEdge[];
 };
+
+export type TopoLayout = Record<string, { x: number; y: number }>;
 
 export function logicalIconFile(kind: DeviceKind): string {
   const name = kind === "pc" ? "pc.svg" : kind === "switch" ? "switch.svg" : kind === "router" ? "router.svg" : "tap.svg";
@@ -120,6 +123,18 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
       ),
     };
   }
+  if (event === "claim.released") {
+    const id = str(rec.device_id);
+    if (!id) {
+      return snap;
+    }
+    return {
+      ...snap,
+      devices: snap.devices.map((device) =>
+        device.id === id ? { ...device, claimed: false } : device,
+      ),
+    };
+  }
   if (event !== "topology.updated") {
     return snap;
   }
@@ -152,7 +167,7 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
   return { ...snap, devices, links, tapAttach };
 }
 
-export function buildTopo(snap: TopoSnapshot): TopoView {
+export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView {
   const width = 960;
   const height = 640;
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
@@ -177,6 +192,13 @@ export function buildTopo(snap: TopoSnapshot): TopoView {
   placeRow(nodes, row.switch, 250, width);
   placeRow(nodes, row.router, 400, width);
   placeRow(nodes, row["tap-free"], 520, width);
+  for (const node of nodes) {
+    const pos = layout[node.id];
+    if (pos) {
+      node.x = pos.x;
+      node.y = pos.y;
+    }
+  }
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const edges: TopoEdge[] = snap.links.map((link) => {
     const a = byId.get(ownerOf(link.port_a));
@@ -205,10 +227,11 @@ export function buildTopo(snap: TopoSnapshot): TopoView {
     nodes.push({
       id: device.id,
       kind: "tap",
-      x: edge ? (edge.x1 + edge.x2) / 2 : width / 2,
-      y: edge ? (edge.y1 + edge.y2) / 2 : 320,
+      x: layout[device.id]?.x ?? (edge ? (edge.x1 + edge.x2) / 2 : width / 2),
+      y: layout[device.id]?.y ?? (edge ? (edge.y1 + edge.y2) / 2 : 320),
       labels: deviceLabels(device),
       onLink: linkId,
+      claimed: device.claimed,
     });
   }
   return { width, height, nodes, edges };
@@ -230,6 +253,7 @@ function placeRow(nodes: TopoNode[], devices: TopoDevice[], y: number, width: nu
       y,
       labels: deviceLabels(device),
       onLink: null,
+      claimed: device.claimed,
     });
   });
 }

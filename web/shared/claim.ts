@@ -38,6 +38,11 @@ export type LinkView = {
   physically_up: boolean;
 };
 
+export type TapAttachView = {
+  tap_id: string;
+  link_id: string;
+};
+
 export type MacEntry = {
   switch_id: string;
   port_id: string;
@@ -67,6 +72,7 @@ export type SimFrameView = {
   at_device_id: string;
   status: string;
   changed: string[];
+  ingress: { dst_mac: string; src_mac: string } | null;
 };
 
 export type ClaimedScreen = {
@@ -82,6 +88,10 @@ export type ClaimedScreen = {
   notice: string;
   frame: SimFrameView | null;
   tapLog: SimFrameView[];
+  tapAttach: TapAttachView[];
+  chatPeerIp: string;
+  chatError: string;
+  chatPrompt: boolean;
 };
 
 export type Screen =
@@ -246,7 +256,10 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     if (!connectionId || !device) {
       return { kind: "error", message: "领取角色失败" };
     }
-    return blankClaimed(connectionId, device);
+    return {
+      ...blankClaimed(connectionId, device),
+      tapAttach: parseTapAttach(data.tap_attach),
+    };
   }
 
   if (
@@ -278,6 +291,21 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
     }
     return blankClaimed(connectionId, device);
   }
+  if (event === "claim.released") {
+    if (screen.kind === "claimed" && str(root.device_id) && str(root.device_id) !== screen.device.id) {
+      return screen;
+    }
+    const connectionId =
+      screen.kind === "waiting_open" || screen.kind === "claimed" ? screen.connectionId : "";
+    if (!connectionId) {
+      return screen;
+    }
+    return {
+      kind: "waiting_open",
+      connectionId,
+      message: str(root.message) || MSG_WAITING_OPEN,
+    };
+  }
   if (event === "claim.full") {
     return {
       kind: "full",
@@ -292,12 +320,19 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
       links: next.links,
       macTable: Array.isArray(root.mac_table) ? parseMacTable(root.mac_table) : screen.macTable,
       arpTable: Array.isArray(root.arp_table) ? parseArpTable(root.arp_table) : screen.arpTable,
+      tapAttach:
+        root.tap_attach != null ? mergeTapAttach(screen.tapAttach, root.tap_attach) : screen.tapAttach,
     };
   }
   if ((event === "hello" || event === "mode.changed") && screen.kind === "claimed") {
     const mode = str(root.mode);
+    const tapAttach =
+      root.tap_attach != null ? parseTapAttach(root.tap_attach) : screen.tapAttach;
     if (mode === "normal" || mode === "simulation") {
-      return { ...screen, mode, notice: "" };
+      return { ...screen, mode, notice: "", tapAttach };
+    }
+    if (root.tap_attach != null) {
+      return { ...screen, tapAttach };
     }
   }
   if ((event === "chat.sent" || event === "chat.received") && screen.kind === "claimed") {
@@ -312,6 +347,7 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
           dir: event === "chat.sent" ? "sent" : "received",
         },
       ],
+      chatError: "",
     };
   }
   if (event === "frame.built" && screen.kind === "claimed") {
@@ -401,6 +437,10 @@ export function blankClaimed(
     notice: "",
     frame: null,
     tapLog: [],
+    tapAttach: [],
+    chatPeerIp: "",
+    chatError: "",
+    chatPrompt: false,
   };
 }
 
@@ -415,7 +455,26 @@ export function applyPingDetail(screen: Screen, detail: string): Screen {
   if (screen.kind !== "claimed") {
     return screen;
   }
-  return { ...screen, pingDetail: detail, notice: "" };
+  const line = {
+    from_ip: screen.chatPeerIp || "",
+    to_ip: screen.chatPeerIp || "",
+    text: detail,
+    dir: "sent" as const,
+  };
+  return {
+    ...screen,
+    pingDetail: detail,
+    notice: "",
+    chatError: "",
+    chatLog: screen.device.kind === "pc" ? [...screen.chatLog, line] : screen.chatLog,
+  };
+}
+
+export function applyChatError(screen: Screen, message: string): Screen {
+  if (screen.kind !== "claimed") {
+    return screen;
+  }
+  return { ...screen, chatError: message, notice: "" };
 }
 export type InventoryForm = {
   pcCount: number;
@@ -580,7 +639,15 @@ function parseFrame(value: unknown): SimFrameView | null {
     changed: Array.isArray(rec.changed)
       ? rec.changed.filter((item): item is string => typeof item === "string")
       : [],
+    ingress: parseIngress(rec.ingress),
   };
+}
+
+function parseIngress(value: unknown): { dst_mac: string; src_mac: string } | null {
+  const rec = asRecord(value);
+  const dst_mac = str(rec.dst_mac);
+  const src_mac = str(rec.src_mac);
+  return dst_mac && src_mac ? { dst_mac, src_mac } : null;
 }
 
 const FRAME_FIELDS = ["dst_mac", "src_mac", "src_ip", "dst_ip", "payload"] as const;
@@ -599,7 +666,34 @@ function withChangedFields(frame: SimFrameView, prev: SimFrameView | null, scree
       changed.add("src_mac");
     }
   }
-  return { ...frame, changed: [...changed] };
+  const ingress = prev
+    ? {
+        dst_mac: prev.ingress?.dst_mac ?? prev.dst_mac,
+        src_mac: prev.ingress?.src_mac ?? prev.src_mac,
+      }
+    : frame.ingress;
+  return { ...frame, changed: [...changed], ingress };
+}
+
+function parseTapAttach(raw: unknown): TapAttachView[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => asRecord(item))
+      .map((rec) => ({ tap_id: str(rec.tap_id), link_id: str(rec.link_id) }))
+      .filter((row) => row.tap_id && row.link_id);
+  }
+  const rec = asRecord(raw);
+  const tap_id = str(rec.tap_id);
+  const link_id = str(rec.link_id);
+  return tap_id && link_id ? [{ tap_id, link_id }] : [];
+}
+
+function mergeTapAttach(current: TapAttachView[], raw: unknown): TapAttachView[] {
+  let next = current;
+  for (const row of parseTapAttach(raw)) {
+    next = next.filter((item) => item.tap_id !== row.tap_id).concat(row);
+  }
+  return next;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -612,3 +706,5 @@ function asRecord(value: unknown): Record<string, unknown> {
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
+export const MSG_CHAT_UNREACHABLE = "消息发送失败，对方 IP 不可达";
+export const MSG_PORT_BUSY = "端口已被占用";

@@ -6,10 +6,10 @@ export function withoutTapPorts(ports: string[]): string[] {
   return ports.filter((id) => !id.startsWith("TAP"));
 }
 
-export function renderWorkbench(screen: ClaimedScreen): string {
+export function renderWorkbench(screen: ClaimedScreen, opts: { chatInStage?: boolean } = {}): string {
   const kind = screen.device.kind;
   if (kind === "pc") {
-    return pcBench(screen);
+    return pcBench(screen, opts.chatInStage === true);
   }
   if (kind === "switch") {
     return switchBench(screen);
@@ -20,14 +20,17 @@ export function renderWorkbench(screen: ClaimedScreen): string {
   return tapBench(screen);
 }
 
-function pcBench(screen: ClaimedScreen): string {
+export function renderPcChat(screen: ClaimedScreen): string {
+  return chatPanel(screen);
+}
+
+function pcBench(screen: ClaimedScreen, chatInStage: boolean): string {
   const sim = screen.mode === "simulation";
   return `
     <section class="bench" data-role="pc">
       ${arpTable(screen)}
-      ${chatWindow(screen)}
       ${sim ? frameCard(screen.frame, "pc") : ""}
-      ${sim ? simForm() : `${chatForm()}${pingForm(screen.pingDetail)}`}
+      ${chatInStage ? "" : chatPanel(screen)}
       ${notice(screen.notice)}
     </section>
   `;
@@ -110,43 +113,47 @@ function arpTable(screen: ClaimedScreen): string {
   `;
 }
 
-function chatWindow(screen: ClaimedScreen): string {
+function chatPanel(screen: ClaimedScreen): string {
+  const peer = screen.chatPeerIp;
+  const sim = screen.mode === "simulation";
+  const fail = screen.chatError
+    ? `<p class="chat-fail">${escapeHtml(screen.chatError)}</p>`
+    : "";
+  const modal = screen.chatPrompt
+    ? `<form class="wx-peer-form">
+         <p>对方 IP</p>
+         <label>对方 IP <input name="peer_ip" value="${escapeAttr(peer)}" required /></label>
+         <button type="submit">开始</button>
+       </form>`
+    : "";
+  const composer = peer
+    ? `<form class="chat-form" data-mode="${sim ? "simulation" : "normal"}">
+         <input type="hidden" name="to_ip" value="${escapeAttr(peer)}" />
+         <input name="text" required placeholder="发送消息" />
+         <button type="submit">${sim ? "组帧发送" : "发送"}</button>
+       </form>`
+    : `<p class="wx-hint">点击发起聊天，输入对方 IP</p>`;
+  const lines = screen.chatLog.length
+    ? screen.chatLog
+        .map(
+          (line) =>
+            `<li class="wx-bubble" data-dir="${line.dir}"><span class="wx-meta">${escapeHtml(line.from_ip)} → ${escapeHtml(line.to_ip)}</span> ${escapeHtml(line.text)}</li>`,
+        )
+        .join("")
+    : `<li class="empty">尚无对话</li>`;
   return `
-    <div class="chat" data-window="dialog">
-      <h2>对话窗口</h2>
-      <ol class="chat-log">
-        ${
-          screen.chatLog.length
-            ? screen.chatLog
-                .map(
-                  (line) =>
-                    `<li data-dir="${line.dir}"><span>${escapeHtml(line.from_ip)} → ${escapeHtml(line.to_ip)}</span> ${escapeHtml(line.text)}</li>`,
-                )
-                .join("")
-            : "<li class=\"empty\">尚无对话</li>"
-        }
-      </ol>
+    <div class="wx chat" data-window="dialog">
+      <header class="wx-hd">
+        <h2>对话窗口</h2>
+        <p class="wx-peer">${peer ? escapeHtml(peer) : "未选择对象"}</p>
+        <button type="button" data-chat-start>发起聊天</button>
+        <button type="button" class="wx-ping" data-chat-ping ${peer ? "" : "disabled"}>ping</button>
+      </header>
+      ${fail}
+      ${modal}
+      <ol class="chat-log wx-log">${lines}</ol>
+      ${composer}
     </div>
-  `;
-}
-
-function chatForm(): string {
-  return `
-    <form class="chat-form" data-mode="normal">
-      <label>目的 IP <input name="to_ip" required /></label>
-      <label>文字 <input name="text" required /></label>
-      <button type="submit">发送</button>
-    </form>
-  `;
-}
-
-function simForm(): string {
-  return `
-    <form class="chat-form" data-mode="simulation">
-      <label>目的 IP <input name="to_ip" required /></label>
-      <label>文字 <input name="text" required /></label>
-      <button type="submit">组帧发送</button>
-    </form>
   `;
 }
 
@@ -195,19 +202,52 @@ function frameCard(frame: SimFrameView | null, kind?: DeviceKind): string {
       ? `<div class="encap-plain" data-step="payload"><span class="encap-label">消息</span><span>${escapeHtml(frame.payload)}</span></div><p class="encap-arrow">打包</p>`
       : "";
   const unpack =
-    kind === "router"
-      ? `<p class="encap-arrow">解包 → 网络层 → 重新打包</p>`
-      : kind === "pc" && delivered
-        ? `<p class="frame-message" data-part="message">消息：${escapeHtml(frame.payload)}</p>`
-        : "";
+    kind === "pc" && delivered
+      ? `<p class="frame-message" data-part="message">消息：${escapeHtml(frame.payload)}</p>`
+      : "";
+  const routerSteps = kind === "router" ? routerFrameSteps(frame) : "";
   return `
     <article class="frame" data-frame="${escapeAttr(frame.frame_id)}" data-status="${escapeAttr(frame.status)}">
       <h2>网络帧</h2>
       ${note ? `<p class="frame-note">${note}</p>` : ""}
       ${packing}
-      ${frameStrip(frame)}
+      ${routerSteps || frameStrip(frame)}
       ${unpack}
     </article>
+  `;
+}
+
+function routerFrameSteps(frame: SimFrameView): string {
+  const recv = frame.ingress ?? { dst_mac: frame.dst_mac, src_mac: frame.src_mac };
+  const recvFrame: SimFrameView = {
+    ...frame,
+    dst_mac: recv.dst_mac,
+    src_mac: recv.src_mac,
+    changed: [],
+    ingress: null,
+  };
+  const packed = frame.ingress
+    ? frameStrip(frame)
+    : `<p class="encap-wait">选出口后改写 MAC 并重新打包</p>`;
+  return `
+    <div class="encap-step" data-step="recv">
+      <p class="encap-label">1. 收到数据帧</p>
+      ${frameStrip(recvFrame)}
+    </div>
+    <p class="encap-arrow">解包</p>
+    <div class="encap-step" data-step="net">
+      <p class="encap-label">2. 网络层</p>
+      <div class="frame-strip" data-part="network">
+        <div class="frame-cell" data-field="src_ip"><span class="k">源 IP</span><span class="v">${escapeHtml(frame.src_ip)}</span></div>
+        <div class="frame-cell" data-field="dst_ip"><span class="k">目的 IP</span><span class="v">${escapeHtml(frame.dst_ip)}</span></div>
+        <div class="frame-cell" data-field="payload" data-part="payload"><span class="k">数据</span><span class="v">${escapeHtml(frame.payload)}</span></div>
+      </div>
+    </div>
+    <p class="encap-arrow">重新打包</p>
+    <div class="encap-step" data-step="pack">
+      <p class="encap-label">3. 重新打包的数据帧</p>
+      ${packed}
+    </div>
   `;
 }
 
