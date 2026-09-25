@@ -60,26 +60,49 @@ function render(): void {
   const canvas = snap ? renderCanvas(snap, icons, layout) : null;
   lastView = canvas?.view ?? null;
   app.innerHTML = `
-    <main>
-      <header class="mast">
-        <p class="eyebrow">纸上谈网 · 教师席</p>
-        <h1>${claiming ? "课堂拓扑" : "本课设备定员"}</h1>
+    <main class="console" data-phase="${claiming ? "live" : "draft"}">
+      <header class="mast hud">
+        <div class="brand">
+          <p class="eyebrow">纸上谈网 · 教师席</p>
+          <h1>${claiming ? "课堂拓扑" : "本课设备定员"}</h1>
+        </div>
         <div class="icons" aria-hidden="true">
           <img src="${pcUrl}" alt="" />
           <img src="${switchUrl}" alt="" />
           <img src="${routerUrl}" alt="" />
           <img src="${tapUrl}" alt="" />
         </div>
+        ${claiming ? `<button type="button" id="end">结束课堂</button>` : ""}
       </header>
-      ${claiming ? `<div class="actions"><button type="button" id="end">结束课堂</button></div>` : rosterForm()}
-      <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
-      ${modeBar()}
-      ${tapBar()}
-      ${canvas ? canvas.html : ""}
+      ${claiming ? liveDeck(canvas?.html ?? "") : draftDeck()}
       ${unbindMenu()}
     </main>
   `;
   bind();
+}
+
+function liveDeck(canvasHtml: string): string {
+  return `
+    <div class="deck">
+      <aside class="rail">
+        <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
+        ${modeBar()}
+        ${tapBar()}
+      </aside>
+      ${canvasHtml}
+    </div>
+  `;
+}
+
+function draftDeck(): string {
+  return `
+    <div class="draft">
+      ${rosterForm()}
+      <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
+      ${modeBar()}
+      ${tapBar()}
+    </div>
+  `;
 }
 
 function rosterForm(): string {

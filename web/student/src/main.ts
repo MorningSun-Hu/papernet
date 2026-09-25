@@ -115,13 +115,15 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
   );
   return `
     <main class="shell" data-kind="${shell}">
-      <header>
+      <header class="hud">
         <p class="eyebrow">纸上谈网 · 学生席</p>
         <h1>${escapeHtml(ROLE_LABEL[s.device.kind])}</h1>
         <p class="device-id">${escapeHtml(s.device.id)}</p>
       </header>
-      ${stage.html}
-      ${renderWorkbench(s, { chatInStage: isPc })}
+      <div class="lab">
+        ${stage.html}
+        ${renderWorkbench(s, { chatInStage: isPc })}
+      </div>
     </main>
   `;
 }
