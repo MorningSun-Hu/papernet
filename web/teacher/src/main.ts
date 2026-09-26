@@ -1,9 +1,6 @@
 import "./style.css";
-import routerUrl from "@icons/logical/router.svg?url";
-import switchUrl from "@icons/logical/switch.svg?url";
-import pcUrl from "@icons/logical/pc.svg?url";
-import tapUrl from "@icons/logical/tap.svg?url";
 import { buildInventory, formatClaimRoster, targetClassroomInventory, wsPath } from "@shared/claim";
+import { brandLockup, hudClock } from "@shared/brand";
 import { applyTopoEvent, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
 import { attachTap, createClassroom, endClassroom, fetchSnapshot, loadClassroomId, openClaim, setMode, unbindDevice } from "./api";
 import { patchTopo, renderCanvas } from "./canvas";
@@ -26,6 +23,7 @@ type FormState = {
   routerCount: number;
   routerPorts: number;
   tapCount: number;
+  routerIps: string[];
 };
 
 const form: FormState = {
@@ -36,6 +34,7 @@ const form: FormState = {
   routerCount: 1,
   routerPorts: 2,
   tapCount: 0,
+  routerIps: ["", ""],
 };
 
 let classroomId = loadClassroomId();
@@ -48,33 +47,23 @@ let menu: { x: number; y: number; deviceId: string } | null = null;
 let layout: TopoLayout = {};
 let lastView: TopoView | null = null;
 
-const icons = {
-  pc: pcUrl,
-  switch: switchUrl,
-  router: routerUrl,
-  tap: tapUrl,
-};
-
 function render(): void {
   const claiming = claimState === "open" || claimState === "full";
-  const canvas = snap ? renderCanvas(snap, icons, layout) : null;
+  const canvas = snap ? renderCanvas(snap, {}, layout) : null;
   lastView = canvas?.view ?? null;
   app.innerHTML = `
     <main class="console" data-phase="${claiming ? "live" : "draft"}">
       <header class="mast hud">
+        ${brandLockup()}
         <div class="brand">
-          <p class="eyebrow">纸上谈网 · 教师席</p>
-          <h1>${claiming ? "课堂拓扑" : "本课设备定员"}</h1>
+          <h1>纸上谈网 · 教师席</h1>
+          <p class="eyebrow">以实践见真知 · 让网络触手可及</p>
         </div>
-        <div class="icons" aria-hidden="true">
-          <img src="${pcUrl}" alt="" />
-          <img src="${switchUrl}" alt="" />
-          <img src="${routerUrl}" alt="" />
-          <img src="${tapUrl}" alt="" />
-        </div>
-        ${claiming ? `<button type="button" id="end">结束课堂</button>` : ""}
+        <p class="hud-clock">${hudClock()}</p>
+        ${claiming ? `${modeBar()}<button type="button" id="end">结束课堂</button>` : ""}
       </header>
-      ${claiming ? liveDeck(canvas?.html ?? "") : draftDeck()}
+      ${claiming ? liveDeck(canvas?.html ?? "") : `<div class="topo-empty"><p>暂无拓扑，先确定本课设备</p></div>`}
+      ${claiming ? "" : rosterDialog()}
       ${unbindMenu()}
     </main>
   `;
@@ -85,46 +74,66 @@ function liveDeck(canvasHtml: string): string {
   return `
     <div class="deck">
       <aside class="rail">
-        <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
-        ${modeBar()}
+        <h2>设备领取</h2>
+        ${claimPanel()}
         ${tapBar()}
+        <p class="tip">从左侧查看领取进度，在拓扑图中右击已领设备可解除绑定。</p>
       </aside>
       ${canvasHtml}
     </div>
   `;
 }
 
-function draftDeck(): string {
+function rosterDialog(): string {
+  const ips = Array.from({ length: Math.max(1, form.routerPorts) }, (_, i) => form.routerIps[i] || "");
+  const switchIds = Array.from({ length: form.switchCount }, (_, i) => `S${i + 1}`).join("、") || "—";
+  const routerIds = Array.from({ length: form.routerCount }, (_, i) => `R${i + 1}`).join("、") || "—";
   return `
-    <div class="draft">
-      ${rosterForm()}
-      <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
-      ${modeBar()}
-      ${tapBar()}
+    <div class="dlg-backdrop" data-open="true">
+      <form id="roster" class="dlg roster-dlg">
+        <header class="dlg-hd">
+          ${brandLockup()}
+          <div>
+            <h3>确定本课设备</h3>
+            <p class="dlg-sub">课前定员、定设备，开放领取后本窗口收起。</p>
+          </div>
+        </header>
+        <section class="dlg-block">
+          <h4>定员</h4>
+          <label>课堂名称 <input name="title" value="${escapeAttr(form.title)}" /></label>
+          <div class="grid">
+            ${stepper("pcCount", "PC 台数", form.pcCount, 0, 48)}
+            ${stepper("switchCount", "交换机台数", form.switchCount, 0, 24)}
+            ${stepper("routerCount", "路由器台数", form.routerCount, 0, 12)}
+            ${stepper("tapCount", "网络分流器", form.tapCount, 0, 8)}
+          </div>
+        </section>
+        <section class="dlg-block">
+          <h4>定设备</h4>
+          <div class="grid">
+            ${stepper("switchPorts", "交换机口数", form.switchPorts, 1, 24)}
+            ${stepper("routerPorts", "路由器口数", form.routerPorts, 1, 8)}
+          </div>
+          <p class="hint">应用于每台交换机：${escapeHtml(switchIds)}。设备：${escapeHtml(routerIds)}。</p>
+          <fieldset class="preset-ips">
+            <legend>预置路由器口 IP</legend>
+            ${ips
+              .map(
+                (ip, i) =>
+                  `<label>R1/${String(i + 1).padStart(2, "0")} <input name="router_ip_${i}" value="${escapeAttr(ip)}" placeholder="可选" /></label>`,
+              )
+              .join("")}
+            <p class="hint">不填则由领取该路由器的学生填写。掩码固定 255.255.255.0</p>
+          </fieldset>
+        </section>
+        <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
+        <div class="dlg-actions">
+          <button type="button" id="target-scene">载入目标课堂</button>
+          <button type="submit" id="create">创建课堂</button>
+          <button type="button" id="open" ${classroomId ? "" : "disabled"}>开放领取</button>
+        </div>
+      </form>
     </div>
-  `;
-}
-
-function rosterForm(): string {
-  return `
-    <form id="roster">
-      <label>课堂名称
-        <input name="title" value="${escapeAttr(form.title)}" />
-      </label>
-      <div class="grid">
-        ${stepper("pcCount", "PC 台数", form.pcCount, 0, 48)}
-        ${stepper("switchCount", "交换机台数", form.switchCount, 0, 24)}
-        ${stepper("switchPorts", "交换机口数", form.switchPorts, 1, 24)}
-        ${stepper("routerCount", "路由器台数", form.routerCount, 0, 12)}
-        ${stepper("routerPorts", "路由器口数", form.routerPorts, 1, 8)}
-        ${stepper("tapCount", "网络分流器", form.tapCount, 0, 8)}
-      </div>
-      <div class="actions">
-        <button type="submit" id="create">创建课堂</button>
-        <button type="button" id="target-scene">载入目标课堂</button>
-        <button type="button" id="open" ${classroomId ? "" : "disabled"}>开放领取</button>
-      </div>
-    </form>
   `;
 }
 
@@ -159,6 +168,47 @@ function statusLine(): string {
   }
   const head = claimState === "full" ? "本课设备已领完。" : "已开放领取。";
   return `${head}${bits.join("。")}`;
+}
+
+function claimPanel(): string {
+  const roster = snap ? formatClaimRoster(snap.devices) : { taken: 0, total: 0, claimed: "", free: "" };
+  const pct = roster.total ? Math.round((roster.taken / roster.total) * 100) : 0;
+  const claimedRows = snap
+    ? snap.devices
+        .filter((d) => d.claimed)
+        .map((d) => `<li data-kind="${escapeAttr(d.kind)}"><span>${escapeHtml(d.kind === "pc" ? "PC" : d.kind === "switch" ? "交换机" : d.kind === "router" ? "路由器" : "网络分流器")}</span><strong>${escapeHtml(d.id)}</strong></li>`)
+        .join("")
+    : "";
+  const freeKinds = [
+    ["pc", "PC"],
+    ["switch", "交换机"],
+    ["router", "路由器"],
+    ["tap", "网络分流器"],
+  ] as const;
+  const freeRows = snap
+    ? freeKinds
+        .map(([kind, label]) => {
+          const all = snap!.devices.filter((d) => d.kind === kind);
+          const free = all.filter((d) => !d.claimed).length;
+          return `<li><span>${label}</span><em>${free}/${all.length}</em></li>`;
+        })
+        .join("")
+    : "";
+  return `
+    <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
+    <div class="claim-meter">
+      <p>已领取 <strong>${roster.taken}/${roster.total}</strong></p>
+      <span class="meter"><i style="width:${pct}%"></i></span>
+    </div>
+    <div class="claim-list">
+      <h3>已领设备</h3>
+      <ul>${claimedRows || "<li>暂无</li>"}</ul>
+    </div>
+    <div class="claim-list free">
+      <h3>可领取设备</h3>
+      <ul>${freeRows}</ul>
+    </div>
+  `;
 }
 
 function modeBar(): string {
@@ -227,6 +277,9 @@ function bind(): void {
     form.routerCount = num(data, "routerCount", form.routerCount);
     form.routerPorts = num(data, "routerPorts", form.routerPorts);
     form.tapCount = num(data, "tapCount", form.tapCount);
+    form.routerIps = Array.from({ length: Math.max(1, form.routerPorts) }, (_, i) =>
+      String(data.get(`router_ip_${i}`) || ""),
+    );
     targetScene = false;
   });
   roster?.addEventListener("submit", async (ev) => {
@@ -236,7 +289,7 @@ function bind(): void {
       classroomId = await createClassroom(
         form.title,
         form,
-        targetScene ? targetClassroomInventory() : undefined,
+        targetScene ? targetClassroomInventory() : inventoryFromForm(),
       );
       claimState = "draft";
       await loadSnap();
@@ -266,6 +319,7 @@ function bind(): void {
     form.routerCount = 1;
     form.routerPorts = 2;
     form.tapCount = 0;
+    form.routerIps = [];
     targetScene = true;
     notice = "已载入目标课堂：PCA — S1 — R1 — S2 — PCB";
     render();
@@ -300,12 +354,33 @@ function num(data: FormData, name: string, fallback: number): number {
   return Number.isFinite(raw) ? raw : fallback;
 }
 
+function inventoryFromForm() {
+  const inventory = buildInventory(form);
+  if (!inventory.routers.length) {
+    return inventory;
+  }
+  return {
+    ...inventory,
+    routers: inventory.routers.map((router, index) => {
+      if (index > 0) {
+        return router;
+      }
+      const ports = Array.from({ length: router.port_count }, (_, i) => ({
+        id: `${router.id}/${String(i + 1).padStart(2, "0")}`,
+        ip: form.routerIps[i]?.trim() || "",
+      })).filter((port) => port.ip);
+      return ports.length ? { ...router, ports } : router;
+    }),
+  };
+}
+
 function bindTopoDrag(): void {
-  const svg = app.querySelector<SVGSVGElement>(".topo svg");
-  if (!svg) {
+  const topo = app.querySelector<HTMLElement>(".topo");
+  const svg = topo?.querySelector<SVGSVGElement>("svg.topo-wires");
+  if (!topo || !svg) {
     return;
   }
-  for (const g of svg.querySelectorAll<SVGGElement>("g.node")) {
+  for (const g of topo.querySelectorAll<HTMLElement>(".node")) {
     g.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || !snap) {
         return;
@@ -322,8 +397,11 @@ function bindTopoDrag(): void {
       const move = (e: PointerEvent) => {
         const next = svgPoint(svg, e);
         layout = { ...layout, [id]: { x: next.x - dx, y: next.y - dy } };
+        if (!snap) {
+          return;
+        }
         lastView = buildTopo(snap, layout);
-        patchTopo(svg, lastView);
+        patchTopo(topo, lastView);
       };
       const up = () => {
         g.removeEventListener("pointermove", move);
@@ -457,7 +535,7 @@ document.addEventListener("submit", (ev) => {
 });
 
 document.addEventListener("contextmenu", (ev) => {
-  const node = (ev.target as Element | null)?.closest?.("g.node");
+  const node = (ev.target as Element | null)?.closest?.(".node");
   if (!node) {
     if (menu) {
       menu = null;

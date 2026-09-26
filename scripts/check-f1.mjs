@@ -138,7 +138,8 @@ const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), 
 assert.ok(teacherMain.includes("创建课堂"));
 assert.ok(teacherMain.includes("开放领取"));
 assert.ok(teacherMain.includes("结束课堂"));
-assert.ok(teacherMain.includes("@icons/logical/"));
+assert.equal(teacherMain.includes("@icons/"), false);
+assert.ok(teacherMain.includes("确定本课设备"));
 
 assert.ok(teacherMain.includes("formatClaimRoster"));
 

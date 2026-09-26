@@ -1,34 +1,39 @@
 import type { DeviceKind } from "@shared/claim";
+import { TOPO_MODEL } from "@shared/models";
 import { logicalIconFile, type TopoLayout, type TopoSnapshot, type TopoView, buildTopo } from "@shared/topo";
 
-export type IconUrls = Record<DeviceKind, string>;
+export type IconUrls = Partial<Record<DeviceKind, string>>;
 
 export function renderCanvas(
   snap: TopoSnapshot,
-  icons: IconUrls,
+  _icons: IconUrls = {},
   layout: TopoLayout = {},
 ): { html: string; view: TopoView } {
   const view = buildTopo(snap, layout);
   const html = `
     <section class="topo" data-mode="${snap.mode}">
-      <svg viewBox="0 0 ${view.width} ${view.height}" role="img" aria-label="课堂拓扑">
+      <p class="topo-tab">网络拓扑</p>
+      <svg class="topo-wires" viewBox="0 0 ${view.width} ${view.height}" role="img" aria-label="课堂拓扑">
         ${view.edges.map((edge) => edgeMarkup(edge)).join("")}
-        ${view.nodes.map((node) => nodeMarkup(node, icons)).join("")}
       </svg>
+      <div class="topo-nodes">
+        ${view.nodes.map((node) => nodeMarkup(node, view)).join("")}
+      </div>
     </section>
   `;
   return { html, view };
 }
 
-export function patchTopo(svg: SVGSVGElement, view: TopoView): void {
+export function patchTopo(root: HTMLElement, view: TopoView): void {
   for (const node of view.nodes) {
-    const g = svg.querySelector(`g.node[data-id="${cssAttr(node.id)}"]`);
-    if (g) {
-      g.setAttribute("transform", `translate(${node.x},${node.y})`);
+    const el = root.querySelector<HTMLElement>(`.node[data-id="${cssAttr(node.id)}"]`);
+    if (el) {
+      el.style.left = `${(node.x / view.width) * 100}%`;
+      el.style.top = `${(node.y / view.height) * 100}%`;
     }
   }
   for (const edge of view.edges) {
-    const line = svg.querySelector(`line[data-link="${cssAttr(edge.link_id)}"]`);
+    const line = root.querySelector(`line[data-link="${cssAttr(edge.link_id)}"]`);
     if (line) {
       line.setAttribute("x1", String(edge.x1));
       line.setAttribute("y1", String(edge.y1));
@@ -48,15 +53,17 @@ function edgeMarkup(edge: TopoView["edges"][number]): string {
   return `<line class="link ${edge.style}" data-link="${escapeAttr(edge.link_id)}" x1="${edge.x1}" y1="${edge.y1}" x2="${edge.x2}" y2="${edge.y2}" />`;
 }
 
-function nodeMarkup(node: TopoView["nodes"][number], icons: IconUrls): string {
-  const href = icons[node.kind];
-  const label = node.labels.map((line) => escapeHtml(line)).join(" · ");
+function nodeMarkup(node: TopoView["nodes"][number], view: TopoView): string {
   const on = node.onLink ? ` data-on-link="${escapeAttr(node.onLink)}"` : "";
+  const left = (node.x / view.width) * 100;
+  const top = (node.y / view.height) * 100;
+  const meta = node.labels.slice(1).join(" · ");
   return `
-    <g class="node" data-kind="${node.kind}" data-id="${escapeAttr(node.id)}" data-claimed="${node.claimed}"${on} transform="translate(${node.x},${node.y})">
-      <image href="${href}" x="-32" y="-32" width="64" height="64" />
-      <text y="48" text-anchor="middle">${label}</text>
-    </g>
+    <article class="node" data-kind="${node.kind}" data-id="${escapeAttr(node.id)}" data-claimed="${node.claimed}"${on} style="left:${left}%;top:${top}%">
+      <img class="model-img" src="${TOPO_MODEL[node.kind]}" alt="" />
+      <p class="nid">${escapeHtml(node.labels[0] || node.id)}</p>
+      <p class="nmeta">${escapeHtml(meta)}</p>
+    </article>
   `;
 }
 

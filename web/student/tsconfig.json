@@ -10,7 +10,8 @@
     "baseUrl": ".",
     "paths": {
       "@icons/*": ["../../assets/icons/*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "@models/*": ["../../assets/models/*"]
     }
   },
   "include": ["src", "../shared"]

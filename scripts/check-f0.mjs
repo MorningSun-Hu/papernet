@@ -39,16 +39,20 @@ for (const app of ["student", "teacher"]) {
   assert.ok(cfg.includes(".monkeycode-ai.online"), `${app} missing allowedHosts`);
   assert.ok(cfg.includes('"/api"'), `${app} missing /api proxy`);
   assert.ok(cfg.includes('"/ws"'), `${app} missing /ws proxy`);
-  const main = fs.readFileSync(path.join(root, "web", app, "src/main.ts"), "utf8");
-  assert.ok(main.includes("@icons/"), `${app} should load runtime icons`);
+  assert.ok(cfg.includes("@models"), `${app} missing @models alias`);
 }
 
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
-assert.ok(studentMain.includes("switch.svg"));
-assert.ok(studentMain.includes("router.svg"));
-assert.ok(studentMain.includes("switch-many.svg"));
-assert.ok(studentMain.includes("pc-front.svg"));
-assert.ok(studentMain.includes("pc-back.svg"));
-assert.ok(studentMain.includes("rj45.svg"));
+assert.equal(studentMain.includes("@icons/"), false, "student runtime should not load device SVGs");
+const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), "utf8");
+assert.equal(teacherMain.includes("@icons/"), false, "teacher runtime should not load device SVGs");
+assert.ok(fs.existsSync(path.join(root, "web/shared/brand.ts")));
+const studentStage = fs.readFileSync(path.join(root, "web/student/src/stage.ts"), "utf8");
+assert.ok(studentStage.includes("@models/") || studentStage.includes("CHASSIS"));
+assert.ok(studentStage.includes("chassis-img"));
+assert.equal(studentStage.includes("metal-chassis"), false);
+for (const name of ["pc-front.png", "pc-back.png", "tap.png", "switch.png", "router.png", "topo-pc.png", "topo-switch.png", "topo-tap.png", "topo-router.png"]) {
+  assert.ok(fs.existsSync(path.join(root, "assets/models", name)), `missing models/${name}`);
+}
 
 console.log("F0 checks passed");

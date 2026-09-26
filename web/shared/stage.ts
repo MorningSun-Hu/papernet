@@ -33,7 +33,11 @@ export function buildStage(device: Device, links: LinkView[], tapAttach: TapAtta
   const coords =
     device.kind === "pc"
       ? device.ports.map(() => ({ x: 63, y: 43 }))
-      : slotPositions(device.ports.length);
+      : device.kind === "tap"
+        ? tapSlots(device.ports.length)
+        : device.kind === "router"
+          ? routerSlots(device.ports.length)
+          : slotPositions(device.ports.length);
   const hang = hungLink(device.id, links, tapAttach);
   const ports: StagePort[] = device.ports.map((port, i) => {
     let peerPortId = port.peer_port_id ? port.peer_port_id : null;
@@ -90,26 +94,35 @@ function slotPositions(n: number): { x: number; y: number }[] {
   if (n <= 0) {
     return [];
   }
-  if (n <= 8) {
-    return Array.from({ length: n }, (_, i) => ({
-      x: lerp(12, 88, (i + 0.5) / n),
-      y: 65,
-    }));
-  }
-  const cols = Math.ceil(n / 2);
+  const cols = 12;
   return Array.from({ length: n }, (_, i) => {
     const row = i < cols ? 0 : 1;
-    const col = row === 0 ? i : i - cols;
-    const rowN = row === 0 ? cols : n - cols;
+    const col = i % cols;
     return {
-      x: lerp(12, 88, (col + 0.5) / rowN),
-      y: row === 0 ? 54 : 76,
+      x: lerp(32.7, 76.3, (col + 0.5) / cols),
+      y: row === 0 ? 38 : 70,
     };
   });
 }
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function tapSlots(n: number): { x: number; y: number }[] {
+  const xs = [40.2, 51.8];
+  return Array.from({ length: n }, (_, i) => ({
+    x: xs[Math.min(i, xs.length - 1)] ?? 46,
+    y: 49,
+  }));
+}
+
+function routerSlots(n: number): { x: number; y: number }[] {
+  const xs = [44.4, 50.2, 56.0];
+  return Array.from({ length: n }, (_, i) => ({
+    x: xs[Math.min(i, xs.length - 1)] ?? 50,
+    y: 47,
+  }));
 }
 export const SWITCH_MANY_PORTS = 8;
 

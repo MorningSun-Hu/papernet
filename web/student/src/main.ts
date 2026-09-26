@@ -1,10 +1,4 @@
 import "./style.css";
-import switchUrl from "@icons/switch.svg?url";
-import routerUrl from "@icons/router.svg?url";
-import switchManyUrl from "@icons/switch-many.svg?url";
-import pcFrontUrl from "@icons/pc-front.svg?url";
-import pcBackUrl from "@icons/pc-back.svg?url";
-import rj45Url from "@icons/rj45.svg?url";
 import {
   applyChatError,
   applyNotice,
@@ -21,7 +15,7 @@ import {
   type Screen,
 } from "@shared/claim";
 import { renderPcChat, renderWorkbench, withoutTapPorts } from "@shared/workbench";
-import { switchChassisKind } from "@shared/stage";
+import { brandLockup, hudClock, studentNav } from "@shared/brand";
 import {
   ApiError,
   forwardFrame,
@@ -44,19 +38,6 @@ function mount(): HTMLDivElement {
     throw new Error("missing #app");
   }
   return el;
-}
-
-function chassisFor(kind: string, portCount: number): string {
-  if (kind === "pc") {
-    return pcBackUrl;
-  }
-  if (kind === "router") {
-    return routerUrl;
-  }
-  if (kind === "switch" && switchChassisKind(portCount) === "switch-many") {
-    return switchManyUrl;
-  }
-  return switchUrl;
 }
 
 let screen: Screen = { kind: "idle", message: "正在加入课堂…" };
@@ -98,15 +79,11 @@ function board(message: string, tone: string): string {
 
 function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
   const shell = ROLE_SHELL[s.device.kind];
-  const chassis = chassisFor(s.device.kind, s.device.ports.length);
   const isPc = s.device.kind === "pc";
   const stage = renderStage(
     s.device,
     s.links,
     {
-      chassis,
-      front: isPc ? pcFrontUrl : undefined,
-      rj45: rj45Url,
       chatHtml: isPc ? renderPcChat(s) : undefined,
     },
     selectedPortId,
@@ -116,15 +93,42 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
   return `
     <main class="shell" data-kind="${shell}">
       <header class="hud">
-        <p class="eyebrow">纸上谈网 · 学生席</p>
-        <h1>${escapeHtml(ROLE_LABEL[s.device.kind])}</h1>
-        <p class="device-id">${escapeHtml(s.device.id)}</p>
+        ${brandLockup()}
+        ${studentNav(s.device.kind)}
+        <p class="hud-clock">${hudClock()}</p>
+        <span class="hud-user">学生</span>
       </header>
+      <h1 class="hero-title">${escapeHtml(s.device.kind === "pc" ? "主机" : ROLE_LABEL[s.device.kind])} ${escapeHtml(s.device.id)} <span class="mode-pill" data-mode="${s.mode}">${s.mode === "simulation" ? "模拟" : "普通"}</span></h1>
       <div class="lab">
+        ${statusAside(s)}
         ${stage.html}
         ${renderWorkbench(s, { chatInStage: isPc })}
       </div>
+      <footer class="hud-foot">
+        ${brandLockup()}
+        <p>在实验中遇见更好的自己。</p>
+      </footer>
     </main>
+  `;
+}
+
+function statusAside(s: Extract<Screen, { kind: "claimed" }>): string {
+  if (s.device.kind === "pc") {
+    return "";
+  }
+  const up = s.device.ports.filter((p) =>
+    s.links.some((l) => l.physically_up && (l.port_a === p.id || l.port_b === p.id)),
+  ).length;
+  return `
+    <aside class="status-aside">
+      <h2>${escapeHtml(ROLE_LABEL[s.device.kind])}状态</h2>
+      <p class="device-id">${escapeHtml(s.device.id)}</p>
+      <dl>
+        <div><dt>运行状态</dt><dd><span class="dot" data-up="true"></span> 正常</dd></div>
+        <div><dt>端口总数</dt><dd>${s.device.ports.length}</dd></div>
+        <div><dt>UP 端口</dt><dd>${up}</dd></div>
+      </dl>
+    </aside>
   `;
 }
 
@@ -240,6 +244,20 @@ async function boot(): Promise<void> {
 
 app.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement;
+  const closeDlg = target.closest("[data-dlg-close]");
+  const onBackdrop = target.classList.contains("dlg-backdrop");
+  if (closeDlg || onBackdrop) {
+    if (target.closest(".forward-form") || (onBackdrop && target.querySelector(".forward-form"))) {
+      return;
+    }
+    selectedPortId = null;
+    if (screen.kind === "claimed" && screen.chatPrompt) {
+      setScreen({ ...screen, chatPrompt: false });
+      return;
+    }
+    render();
+    return;
+  }
   if (target.closest("[data-chat-start]") && screen.kind === "claimed") {
     setScreen({ ...screen, chatPrompt: true, chatError: "" });
     return;
@@ -265,6 +283,9 @@ app.addEventListener("click", (ev) => {
   }
   const btn = target.closest<HTMLElement>(".port");
   if (!btn?.dataset.port) {
+    return;
+  }
+  if (screen.kind === "claimed" && screen.device.kind === "tap") {
     return;
   }
   selectedPortId = btn.dataset.port;
@@ -384,3 +405,10 @@ window.addEventListener("resize", () => {
 });
 
 void boot();
+
+window.setInterval(() => {
+  const clock = app.querySelector(".hud-clock");
+  if (clock) {
+    clock.textContent = hudClock();
+  }
+}, 1000);

@@ -17,9 +17,10 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@icons": path.join(repoRoot, "assets/icons"),
-      "@shared": path.join(repoRoot, "web/shared"),
-    },
+      alias: {
+        "@icons": path.join(repoRoot, "assets/icons"),
+        "@shared": path.join(repoRoot, "web/shared"),
+        "@models": path.join(repoRoot, "assets/models"),
+      },
   },
 });

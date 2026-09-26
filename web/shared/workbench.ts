@@ -28,10 +28,38 @@ function pcBench(screen: ClaimedScreen, chatInStage: boolean): string {
   const sim = screen.mode === "simulation";
   return `
     <section class="bench" data-role="pc">
+      ${localNet(screen)}
       ${arpTable(screen)}
       ${sim ? frameCard(screen.frame, "pc") : ""}
       ${chatInStage ? "" : chatPanel(screen)}
       ${notice(screen.notice)}
+    </section>
+  `;
+}
+
+function localNet(screen: ClaimedScreen): string {
+  const port = screen.device.ports[0];
+  const ip = port?.ip || "—";
+  const mask = port?.mask || "255.255.255.0";
+  const gw = port?.gateway || "—";
+  const portId = port?.id || "";
+  const peer = port?.peer_port_id || "未连接";
+  const up = Boolean(
+    portId &&
+      screen.links.some(
+        (link) => link.physically_up && (link.port_a === portId || link.port_b === portId),
+      ),
+  );
+  return `
+    <section class="local-net">
+      <h2>本机网络信息</h2>
+      <dl>
+        <div><dt>IP 地址</dt><dd>${escapeHtml(ip)}</dd></div>
+        <div><dt>子网掩码</dt><dd>${escapeHtml(mask)}</dd></div>
+        <div><dt>默认网关</dt><dd>${escapeHtml(gw)}</dd></div>
+        <div><dt>对端端口</dt><dd>${escapeHtml(peer)}${up ? " (已连接)" : ""}</dd></div>
+        <div><dt>网络</dt><dd>${up ? "网络正常" : "未连通"}</dd></div>
+      </dl>
     </section>
   `;
 }
@@ -120,11 +148,17 @@ function chatPanel(screen: ClaimedScreen): string {
     ? `<p class="chat-fail">${escapeHtml(screen.chatError)}</p>`
     : "";
   const modal = screen.chatPrompt
-    ? `<form class="wx-peer-form">
-         <p>对方 IP</p>
-         <label>对方 IP <input name="peer_ip" value="${escapeAttr(peer)}" required /></label>
-         <button type="submit">开始</button>
-       </form>`
+    ? `<div class="dlg-backdrop" data-open="true">
+         <form class="wx-peer-form dlg">
+           <header class="dlg-hd"><h3>发起聊天</h3><button type="button" class="dlg-x" data-dlg-close>×</button></header>
+           <p class="dlg-sub">填写对端 PC 的 IP</p>
+           <label>对方 IP <input name="peer_ip" value="${escapeAttr(peer)}" required /></label>
+           <div class="dlg-actions">
+             <button type="button" data-dlg-close>取消</button>
+             <button type="submit">开始</button>
+           </div>
+         </form>
+       </div>`
     : "";
   const composer = peer
     ? `<form class="chat-form" data-mode="${sim ? "simulation" : "normal"}">
@@ -169,16 +203,41 @@ function pingForm(detail: string): string {
 
 function forwardForm(screen: ClaimedScreen): string {
   const ports = screen.device.ports;
+  const kind = screen.device.kind;
+  const frame = screen.frame;
+  const byMac = kind === "switch";
+  const hint = byMac ? "根据目的 MAC 选择转发端口" : "根据目的 IP 选择转发端口";
+  const frameRows = frame
+    ? `<table class="dlg-frame">
+         <tr><th>目的 MAC</th><td>${escapeHtml(frame.dst_mac)}</td></tr>
+         <tr><th>源 MAC</th><td>${escapeHtml(frame.src_mac)}</td></tr>
+         <tr><th>源 IP</th><td>${escapeHtml(frame.src_ip)}</td></tr>
+         <tr><th>目的 IP</th><td>${escapeHtml(frame.dst_ip)}</td></tr>
+         <tr><th>数据</th><td>${escapeHtml(frame.payload)}</td></tr>
+       </table>`
+    : "";
   return `
-    <form class="forward-form">
-      <p>模拟选口</p>
-      ${ports
-        .map(
-          (port) =>
-            `<button type="submit" class="fwd-port" name="out_port_id" value="${escapeAttr(port.id)}">${escapeHtml(port.id)}</button>`,
-        )
-        .join("")}
-    </form>
+    <div class="dlg-backdrop" data-open="true">
+      <form class="forward-form dlg">
+        <header class="dlg-hd">
+          <h3>转发数据帧</h3>
+          <span class="mode-pill">模拟选口 · ${escapeHtml(screen.device.id)}</span>
+        </header>
+        <p class="dlg-sub">${hint}</p>
+        ${frameRows}
+        <p>选择出端口</p>
+        <div class="fwd-grid">
+          ${ports
+            .map(
+              (port) =>
+                `<button type="submit" class="fwd-port" name="out_port_id" value="${escapeAttr(port.id)}">${escapeHtml(port.id)}</button>`,
+            )
+            .join("")}
+        </div>
+        ${screen.notice === "端口不正确" ? `<p class="notice wrong-port">端口不正确</p>` : ""}
+        <p class="hint">选错口时提示「端口不正确」；帧留在本机</p>
+      </form>
+    </div>
   `;
 }
 

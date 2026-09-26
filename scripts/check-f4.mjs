@@ -19,7 +19,6 @@ assert.equal(logicalIconFile("router"), "logical/router.svg");
 assert.equal(logicalIconFile("tap"), "logical/tap.svg");
 
 const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), "utf8");
-assert.match(teacherMain, /logical\/router\.svg/);
 assert.match(teacherMain, /setMode/);
 assert.match(teacherMain, /attachTap/);
 assert.match(teacherMain, /unbindDevice/);
@@ -34,6 +33,7 @@ assert.match(teacherMain, /bindTopoDrag/);
 
 assert.match(teacherMain, /网络分流器/);
 assert.equal(teacherMain.includes("特殊双口交换机"), false);
+assert.match(teacherMain, /确定本课设备/);
 
 const snap = parseTopoSnapshot({
   mode: "normal",
@@ -99,6 +99,9 @@ assert.equal(sim.mode, "simulation");
 
 const canvasSrc = fs.readFileSync(path.join(root, "web/teacher/src/canvas.ts"), "utf8");
 assert.match(canvasSrc, /data-claimed/);
+assert.match(canvasSrc, /model-img/);
+assert.match(canvasSrc, /TOPO_MODEL/);
+assert.equal(canvasSrc.includes("<image "), false);
 
 const granted = applyTopoEvent(snap, {
   event: "claim.granted",
