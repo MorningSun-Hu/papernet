@@ -1296,8 +1296,9 @@ main {
   height: 18%;
 }
 .canvas[data-kind="router"] .port {
-  width: 8%;
-  height: 22%;
+  width: 3.8%;
+  height: 18%;
+  min-width: 0;
 }
 .canvas[data-kind="switch"] .port {
   width: 3.8%;
@@ -1308,8 +1309,7 @@ main {
   top: auto;
   bottom: calc(100% + 2px);
 }
-.canvas[data-kind="tap"] .pid,
-.canvas[data-kind="router"] .pid {
+.canvas[data-kind="tap"] .pid {
   display: none;
 }
 .pc-front.photo-chassis,
@@ -1368,18 +1368,25 @@ main {
   grid-template-columns: repeat(2, minmax(160px, 280px));
   justify-content: center;
 }
-.stage[data-kind="switch"] .wires {
+.stage[data-kind="switch"] .wires,
+.stage[data-kind="router"] .wires {
   z-index: 2;
 }
-.stage[data-kind="switch"] .peers {
+.stage[data-kind="switch"] .peers,
+.stage[data-kind="router"] .peers {
   display: block;
   min-height: 78px;
   pointer-events: none;
 }
-.stage[data-kind="switch"] .peer-slot {
+.stage[data-kind="router"] .peers {
+  min-height: 118px;
+}
+.stage[data-kind="switch"] .peer-slot,
+.stage[data-kind="router"] .peer-slot {
   min-height: 0;
 }
-.stage[data-kind="switch"] .peer-box {
+.stage[data-kind="switch"] .peer-box,
+.stage[data-kind="router"] .peer-box {
   pointer-events: auto;
   z-index: 6;
   padding: 6px 10px 8px;
@@ -1393,42 +1400,57 @@ main {
   user-select: none;
   touch-action: none;
 }
-.stage[data-kind="switch"] .peer-box.dragging {
+.stage[data-kind="switch"] .peer-box.dragging,
+.stage[data-kind="router"] .peer-box.dragging {
   cursor: grabbing;
   z-index: 8;
   border-color: var(--cyan);
 }
-.stage[data-kind="switch"] .peer-box p {
+.stage[data-kind="switch"] .peer-box p,
+.stage[data-kind="router"] .peer-box p {
   margin: 0;
 }
 .stage[data-kind="switch"] .peer-device,
-.stage[data-kind="switch"] .peer-port {
+.stage[data-kind="switch"] .peer-port,
+.stage[data-kind="router"] .peer-device,
+.stage[data-kind="router"] .peer-port {
   font-size: 0.82rem;
   line-height: 1.25;
 }
-.stage[data-kind="switch"] .peer-link {
+.stage[data-kind="switch"] .peer-link,
+.stage[data-kind="router"] .peer-link {
   margin: 2px 0 0;
   font-size: 0.7rem;
 }
-.stage[data-kind="switch"] .peer-box[data-row="top"] .box-dot {
+.stage[data-kind="router"] .peer-ip,
+.stage[data-kind="router"] .peer-mask {
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: var(--cyan);
+}
+.stage[data-kind="switch"] .peer-box[data-row="top"] .box-dot,
+.stage[data-kind="router"] .peer-box[data-row="top"] .box-dot {
   left: 50%;
   top: auto;
   bottom: -5px;
   transform: translateX(-50%);
 }
-.stage[data-kind="switch"] .peer-box[data-row="bot"] .box-dot {
+.stage[data-kind="switch"] .peer-box[data-row="bot"] .box-dot,
+.stage[data-kind="router"] .peer-box[data-row="bot"] .box-dot {
   left: 50%;
   top: -5px;
   transform: translateX(-50%);
 }
-.stage[data-kind="switch"] .port .pid {
+.stage[data-kind="switch"] .port .pid,
+.stage[data-kind="router"] .port .pid {
   top: auto;
   bottom: calc(100% + 1px);
   font-size: 0.52rem;
   padding: 0 3px;
   line-height: 1.15;
 }
-.stage[data-kind="switch"] .port-dot {
+.stage[data-kind="switch"] .port-dot,
+.stage[data-kind="router"] .port-dot {
   display: none;
 }
 .switch-brand {

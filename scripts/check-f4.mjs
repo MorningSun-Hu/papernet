@@ -12,6 +12,11 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+function joins(edge, a, b) {
+  const here = (x1, y1, n) => x1 === n.x && y1 === n.y;
+  return (here(edge.x1, edge.y1, a) && here(edge.x2, edge.y2, b)) || (here(edge.x1, edge.y1, b) && here(edge.x2, edge.y2, a));
+}
+
 assert.equal(LOGICAL_ICON_DIR, "logical");
 assert.equal(logicalIconFile("pc"), "logical/pc.svg");
 assert.equal(logicalIconFile("switch"), "logical/switch.svg");
@@ -93,10 +98,31 @@ const hanging = applyTopoEvent(snap, {
 const hung = buildTopo(hanging);
 const tap = hung.nodes.find((n) => n.id === "TAP1");
 assert.equal(tap?.onLink, "PC1/01--S1/01");
-const edge = hung.edges.find((e) => e.link_id === "PC1/01--S1/01");
-assert.ok(edge);
-assert.equal(tap?.x, (edge.x1 + edge.x2) / 2);
-assert.equal(tap?.y, (edge.y1 + edge.y2) / 2);
+const pc = hung.nodes.find((n) => n.id === "PC1");
+const sw = hung.nodes.find((n) => n.id === "S1");
+assert.ok(pc && sw && tap);
+assert.equal(tap.x, (pc.x + sw.x) / 2);
+assert.equal(tap.y, (pc.y + sw.y) / 2);
+const hungSegs = hung.edges.filter((e) => e.link_id === "PC1/01--S1/01");
+assert.equal(hungSegs.length, 2);
+assert.equal(new Set(hungSegs.map((e) => e.id)).size, 2);
+assert.ok(hungSegs.some((e) => joins(e, tap, pc)));
+assert.ok(hungSegs.some((e) => joins(e, tap, sw)));
+assert.equal(
+  hung.edges.filter((e) => e.link_id === "R1/01--S1/02").length,
+  1,
+);
+
+const dragged = buildTopo(hanging, { TAP1: { x: 40, y: 60 } });
+const movedTap = dragged.nodes.find((n) => n.id === "TAP1");
+const movedPc = dragged.nodes.find((n) => n.id === "PC1");
+const movedSw = dragged.nodes.find((n) => n.id === "S1");
+assert.ok(movedTap && movedPc && movedSw);
+assert.equal(movedTap.x, 40);
+assert.equal(movedTap.y, 60);
+const draggedSegs = dragged.edges.filter((e) => e.link_id === "PC1/01--S1/01");
+assert.ok(draggedSegs.some((e) => joins(e, movedTap, movedPc)));
+assert.ok(draggedSegs.some((e) => joins(e, movedTap, movedSw)));
 
 const sim = applyTopoEvent(snap, { event: "mode.changed", mode: "simulation" });
 assert.equal(sim.mode, "simulation");
@@ -117,5 +143,8 @@ const granted = applyTopoEvent(snap, {
 assert.equal(granted.devices.find((d) => d.id === "PC1")?.claimed, true);
 const freed = applyTopoEvent(granted, { event: "claim.released", device_id: "PC1" });
 assert.equal(freed.devices.find((d) => d.id === "PC1")?.claimed, false);
+
+assert.match(canvasSrc, /cssAttr\(edge\.id\)/);
+assert.match(canvasSrc, /escapeAttr\(edge\.id\)/);
 
 console.log("F4 checks passed");

@@ -340,6 +340,13 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
       root.tap_attach != null ? parseTapAttach(root.tap_attach) : screen.tapAttach;
     if (mode === "normal" || mode === "simulation") {
       const enteringSim = mode === "simulation" && screen.mode !== "simulation";
+      const leavingSim = mode === "normal" && screen.mode !== "normal";
+      if (!enteringSim && !leavingSim && mode === screen.mode) {
+        if (root.tap_attach == null || JSON.stringify(tapAttach) === JSON.stringify(screen.tapAttach)) {
+          return screen;
+        }
+        return { ...screen, tapAttach };
+      }
       return {
         ...screen,
         mode,

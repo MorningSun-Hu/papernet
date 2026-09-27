@@ -124,10 +124,10 @@ function tapSlots(n: number): { x: number; y: number }[] {
 }
 
 function routerSlots(n: number): { x: number; y: number }[] {
-  const xs = [44.4, 50.2, 56.0];
+  const xs = [50.03, 55.48, 61.0];
   return Array.from({ length: n }, (_, i) => ({
     x: xs[Math.min(i, xs.length - 1)] ?? 50,
-    y: 47,
+    y: 49.11,
   }));
 }
 export const SWITCH_MANY_PORTS = 8;

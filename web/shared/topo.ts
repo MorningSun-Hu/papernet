@@ -39,6 +39,7 @@ export type TopoNode = {
 };
 
 export type TopoEdge = {
+  id: string;
   link_id: string;
   port_a: string;
   port_b: string;
@@ -203,21 +204,6 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
     }
   }
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const edges: TopoEdge[] = snap.links.map((link) => {
-    const a = byId.get(ownerOf(link.port_a));
-    const b = byId.get(ownerOf(link.port_b));
-    return {
-      link_id: link.link_id,
-      port_a: link.port_a,
-      port_b: link.port_b,
-      x1: a?.x ?? 80,
-      y1: a?.y ?? 90,
-      x2: b?.x ?? 880,
-      y2: b?.y ?? 400,
-      style: link.physically_up ? "up" : "pending",
-    };
-  });
-  const edgeById = new Map(edges.map((e) => [e.link_id, e]));
   for (const device of snap.devices) {
     if (device.kind !== "tap") {
       continue;
@@ -226,16 +212,71 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
     if (!linkId) {
       continue;
     }
-    const edge = edgeById.get(linkId);
+    const link = snap.links.find((row) => row.link_id === linkId);
+    const a = link ? byId.get(ownerOf(link.port_a)) : undefined;
+    const b = link ? byId.get(ownerOf(link.port_b)) : undefined;
     nodes.push({
       id: device.id,
       kind: "tap",
-      x: layout[device.id]?.x ?? (edge ? (edge.x1 + edge.x2) / 2 : width / 2),
-      y: layout[device.id]?.y ?? (edge ? (edge.y1 + edge.y2) / 2 : 320),
+      x: layout[device.id]?.x ?? (a && b ? (a.x + b.x) / 2 : width / 2),
+      y: layout[device.id]?.y ?? (a && b ? (a.y + b.y) / 2 : 320),
       labels: deviceLabels(device),
       onLink: linkId,
       claimed: device.claimed,
     });
+  }
+  const placed = new Map(nodes.map((n) => [n.id, n]));
+  const hungTaps = new Map<string, string[]>();
+  for (const [tapId, linkId] of attached) {
+    const list = hungTaps.get(linkId) ?? [];
+    list.push(tapId);
+    hungTaps.set(linkId, list);
+  }
+  const edges: TopoEdge[] = [];
+  for (const link of snap.links) {
+    const a = placed.get(ownerOf(link.port_a));
+    const b = placed.get(ownerOf(link.port_b));
+    const style = link.physically_up ? "up" : "pending";
+    const taps = (hungTaps.get(link.link_id) ?? []).filter((tapId) => placed.has(tapId));
+    if (!taps.length) {
+      edges.push({
+        id: link.link_id,
+        link_id: link.link_id,
+        port_a: link.port_a,
+        port_b: link.port_b,
+        x1: a?.x ?? 80,
+        y1: a?.y ?? 90,
+        x2: b?.x ?? 880,
+        y2: b?.y ?? 400,
+        style,
+      });
+      continue;
+    }
+    for (const tapId of taps) {
+      const tap = placed.get(tapId);
+      edges.push({
+        id: `${link.link_id}::${tapId}::a`,
+        link_id: link.link_id,
+        port_a: link.port_a,
+        port_b: link.port_b,
+        x1: a?.x ?? 80,
+        y1: a?.y ?? 90,
+        x2: tap?.x ?? a?.x ?? 80,
+        y2: tap?.y ?? a?.y ?? 90,
+        style,
+      });
+      edges.push({
+        id: `${link.link_id}::${tapId}::b`,
+        link_id: link.link_id,
+        port_a: link.port_a,
+        port_b: link.port_b,
+        x1: tap?.x ?? b?.x ?? 880,
+        y1: tap?.y ?? b?.y ?? 400,
+        x2: b?.x ?? 880,
+        y2: b?.y ?? 400,
+        style,
+      });
+    }
   }
   return { width, height, nodes, edges };
 }

@@ -43,7 +43,7 @@ export function patchTopo(root: HTMLElement, view: TopoView): void {
     }
   }
   for (const edge of view.edges) {
-    const line = root.querySelector(`line[data-link="${cssAttr(edge.link_id)}"]`);
+    const line = root.querySelector(`line[data-link="${cssAttr(edge.id)}"]`);
     if (line) {
       line.setAttribute("x1", String(edge.x1));
       line.setAttribute("y1", String(edge.y1));
@@ -60,7 +60,7 @@ function cssAttr(value: string): string {
 export { logicalIconFile };
 
 function edgeMarkup(edge: TopoView["edges"][number]): string {
-  return `<line class="link ${edge.style}" data-link="${escapeAttr(edge.link_id)}" x1="${edge.x1}" y1="${edge.y1}" x2="${edge.x2}" y2="${edge.y2}" />`;
+  return `<line class="link ${edge.style}" data-link="${escapeAttr(edge.id)}" x1="${edge.x1}" y1="${edge.y1}" x2="${edge.x2}" y2="${edge.y2}" />`;
 }
 
 function modelSrc(kind: DeviceKind): string {

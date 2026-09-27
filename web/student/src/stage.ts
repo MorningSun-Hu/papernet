@@ -55,16 +55,17 @@ function rackStage(model: StageModel): string {
   const cols = two ? Math.ceil(n / 2) : n;
   const top = two ? model.ports.slice(0, cols) : model.ports;
   const bot = two ? model.ports.slice(cols) : [];
-  const above = model.kind === "switch" ? top.filter((p) => p.peerPortId) : [];
-  const below = (model.kind === "switch" ? bot : model.ports).filter((p) => p.peerPortId);
+  const wired = model.kind === "switch" || model.kind === "router";
+  const above = wired ? top.filter((p) => p.peerPortId) : [];
+  const below = (wired ? bot : model.ports).filter((p) => p.peerPortId);
   const src = model.kind === "pc" ? PC_BACK : CHASSIS[model.kind];
   return `
-    <div class="peers above">${above.map((p) => boxMarkup(p, "top")).join("")}</div>
+    <div class="peers above">${above.map((p) => boxMarkup(p, "top", model.kind)).join("")}</div>
     <div class="canvas photo-chassis" data-kind="${model.kind}">
       <img class="chassis-img" src="${src}" alt="" />
       ${model.ports.map((port, i) => portMarkup(port, true, !two || i < cols ? "top" : "bot")).join("")}
     </div>
-    <div class="peers below">${below.map((p) => boxMarkup(p, "bot")).join("")}</div>
+    <div class="peers below">${below.map((p) => boxMarkup(p, "bot", model.kind)).join("")}</div>
   `;
 }
 
@@ -80,12 +81,18 @@ function portMarkup(port: StagePort, positioned = true, row = "top"): string {
   `;
 }
 
-function boxMarkup(port: StagePort, row = "top"): string {
+function boxMarkup(port: StagePort, row = "top", kind: DeviceKind = "switch"): string {
+  const addr =
+    kind === "router"
+      ? `<p class="peer-ip">IP ${escapeHtml(port.ip || "未配置")}</p>
+         <p class="peer-mask">掩码 ${escapeHtml(port.mask)}</p>`
+      : "";
   return `
     <article class="peer-box" data-port="${escapeAttr(port.portId)}" data-up="${port.physicallyUp}" data-row="${row}">
       <span class="dot box-dot" data-up="${port.physicallyUp}"></span>
       <p class="peer-device">${escapeHtml(port.peerDeviceId || "")}</p>
       <p class="peer-port">${escapeHtml(port.peerPortId || "")}</p>
+      ${addr}
       <p class="peer-link">${port.physicallyUp ? "已连接" : "待互指"}</p>
     </article>
   `;
@@ -136,7 +143,7 @@ export function rememberPeerBox(portId: string, left: number, top: number): void
 
 export function placePeerBoxes(root: HTMLElement): void {
   const stage = root.querySelector<HTMLElement>(".stage");
-  if (!stage || stage.dataset.kind !== "switch") {
+  if (!stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router")) {
     return;
   }
   const stageBox = stage.getBoundingClientRect();

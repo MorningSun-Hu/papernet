@@ -41,6 +41,9 @@ const routerStage = buildStage(
 );
 assert.equal(routerStage.overlayCount, 2);
 assert.equal(routerStage.kind, "router");
+assert.equal(routerStage.ports[0].x, 50.03);
+assert.equal(routerStage.ports[0].y, 49.11);
+assert.equal(routerStage.ports[1].x, 55.48);
 
 const pcStage = buildStage(
   { id: "PC1", kind: "pc", ports: [{ id: "PC1/01" }] },
@@ -191,6 +194,8 @@ const studentStage = fs.readFileSync(path.join(root, "web/student/src/stage.ts")
 assert.ok(studentStage.includes("data-overlay"));
 assert.ok(studentStage.includes("peer-device"));
 assert.ok(studentStage.includes("peer-port"));
+assert.ok(studentStage.includes("peer-ip"));
+assert.ok(studentStage.includes("peer-mask"));
 assert.ok(studentStage.includes("MASK_C"));
 assert.ok(studentStage.includes("对端由教师挂接"));
 

@@ -48,7 +48,69 @@ let reconnectTimer: number | null = null;
 let selectedPortId: string | null = null;
 let peers: string[] = [];
 
+type PortDraft = {
+  portId: string;
+  peer: string;
+  ip: string;
+  gateway: string;
+  field: string;
+  start: number | null;
+  end: number | null;
+};
+
+function capturePortDraft(): PortDraft | null {
+  const form = app.querySelector<HTMLFormElement>("form.port-editor");
+  if (!form) {
+    return null;
+  }
+  const active = document.activeElement;
+  const field = active instanceof HTMLInputElement && form.contains(active) ? active.name : "";
+  return {
+    portId: form.dataset.port || "",
+    peer: String(new FormData(form).get("peer_port_id") || ""),
+    ip: String(new FormData(form).get("ip") || ""),
+    gateway: String(new FormData(form).get("gateway") || ""),
+    field,
+    start: active instanceof HTMLInputElement ? active.selectionStart : null,
+    end: active instanceof HTMLInputElement ? active.selectionEnd : null,
+  };
+}
+
+function restorePortDraft(draft: PortDraft | null): void {
+  if (!draft) {
+    return;
+  }
+  const form = app.querySelector<HTMLFormElement>("form.port-editor");
+  if (!form || form.dataset.port !== draft.portId) {
+    return;
+  }
+  const peer = form.querySelector<HTMLInputElement>('[name="peer_port_id"]');
+  const ip = form.querySelector<HTMLInputElement>('[name="ip"]');
+  const gateway = form.querySelector<HTMLInputElement>('[name="gateway"]');
+  if (peer) {
+    peer.value = draft.peer;
+  }
+  if (ip) {
+    ip.value = draft.ip;
+  }
+  if (gateway) {
+    gateway.value = draft.gateway;
+  }
+  if (!draft.field) {
+    return;
+  }
+  const el = form.querySelector<HTMLInputElement>(`[name="${draft.field}"]`);
+  if (!el) {
+    return;
+  }
+  el.focus();
+  if (draft.start != null && draft.end != null) {
+    el.setSelectionRange(draft.start, draft.end);
+  }
+}
+
 function render(): void {
+  const draft = capturePortDraft();
   app.innerHTML = htmlFor(screen);
   document.title = documentTitle(screen);
   if (screen.kind === "claimed") {
@@ -56,6 +118,7 @@ function render(): void {
     layoutWires(app);
     placeForwardDlg(app);
   }
+  restorePortDraft(draft);
 }
 
 function htmlFor(s: Screen): string {
@@ -227,7 +290,11 @@ function openSocket(connectionId: string): void {
   ws.onmessage = (ev) => {
     try {
       const payload = JSON.parse(String(ev.data));
-      setScreen(applyWsEvent(screen, payload));
+      const next = applyWsEvent(screen, payload);
+      if (next === screen) {
+        return;
+      }
+      setScreen(next);
     } catch {
       /* ignore malformed frames */
     }
@@ -332,22 +399,20 @@ async function boot(): Promise<void> {
 
 let backdropArmed = false;
 
-app.addEventListener("input", (ev) => {
-  const el = ev.target as HTMLInputElement;
-  if (el.name !== "peer_port_id") {
-    return;
-  }
-  const start = el.selectionStart;
-  const end = el.selectionEnd;
-  const next = el.value.toUpperCase();
-  if (el.value === next) {
-    return;
-  }
-  el.value = next;
-  if (start != null && end != null) {
-    el.setSelectionRange(start, end);
-  }
-});
+app.addEventListener(
+  "blur",
+  (ev) => {
+    const el = ev.target;
+    if (!(el instanceof HTMLInputElement) || el.name !== "peer_port_id") {
+      return;
+    }
+    const next = el.value.toUpperCase();
+    if (el.value !== next) {
+      el.value = next;
+    }
+  },
+  true,
+);
 
 app.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement;
@@ -567,7 +632,7 @@ app.addEventListener("pointerdown", (ev) => {
   }
   const box = t.closest<HTMLElement>(".peer-box");
   const stage = app.querySelector<HTMLElement>(".stage");
-  if (!box?.dataset.port || !stage || stage.dataset.kind !== "switch") {
+  if (!box?.dataset.port || !stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router")) {
     return;
   }
   ev.preventDefault();
