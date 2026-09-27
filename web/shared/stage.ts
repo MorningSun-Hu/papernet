@@ -90,6 +90,8 @@ function isUp(portId: string, links: LinkView[], tapAttach: TapAttachView[]): bo
   });
 }
 
+const SWITCH_JACK_X = [30.83, 35.85, 40.77, 45.7, 50.66, 55.61, 60.54, 65.53, 70.52, 75.44, 80.4, 85.36];
+
 function slotPositions(n: number): { x: number; y: number }[] {
   if (n <= 0) {
     return [];
@@ -98,9 +100,13 @@ function slotPositions(n: number): { x: number; y: number }[] {
   return Array.from({ length: n }, (_, i) => {
     const row = i < cols ? 0 : 1;
     const col = i % cols;
+    const last = SWITCH_JACK_X[SWITCH_JACK_X.length - 1] ?? 85.36;
+    const x =
+      SWITCH_JACK_X[col] ??
+      lerp(SWITCH_JACK_X[0] ?? 30.83, last, cols <= 1 ? 0 : col / (cols - 1));
     return {
-      x: lerp(32.7, 76.3, (col + 0.5) / cols),
-      y: row === 0 ? 38 : 70,
+      x,
+      y: row === 0 ? 37.2 : 64.3,
     };
   });
 }

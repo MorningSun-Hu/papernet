@@ -396,6 +396,7 @@ fn parse_claim(s: &str) -> Result<ClaimState, String> {
     match s {
         "draft" => Ok(ClaimState::Draft),
         "open" => Ok(ClaimState::Open),
+        "paused" => Ok(ClaimState::Paused),
         "full" => Ok(ClaimState::Full),
         other => Err(format!("unknown claim_state {other}")),
     }

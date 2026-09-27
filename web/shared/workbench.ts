@@ -86,7 +86,6 @@ function switchBench(screen: ClaimedScreen): string {
       </table>
       ${frameCard(screen.frame, "switch")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
-      ${notice(screen.notice)}
     </section>
   `;
 }

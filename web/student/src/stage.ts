@@ -54,16 +54,16 @@ function rackStage(model: StageModel): string {
   const cols = two ? Math.ceil(n / 2) : n;
   const top = two ? model.ports.slice(0, cols) : model.ports;
   const bot = two ? model.ports.slice(cols) : [];
-  const above = model.kind === "switch" ? top : [];
-  const below = model.kind === "switch" ? bot : model.ports;
+  const above = model.kind === "switch" ? top.filter((p) => p.peerPortId) : [];
+  const below = (model.kind === "switch" ? bot : model.ports).filter((p) => p.peerPortId);
   const src = model.kind === "pc" ? PC_BACK : CHASSIS[model.kind];
   return `
-    <div class="peers above" style="--cols:${Math.max(above.length, 1)}">${above.map((p) => slotOrBox(p)).join("")}</div>
+    <div class="peers above">${above.map((p) => boxMarkup(p, "top")).join("")}</div>
     <div class="canvas photo-chassis" data-kind="${model.kind}">
       <img class="chassis-img" src="${src}" alt="" />
       ${model.ports.map((port, i) => portMarkup(port, true, !two || i < cols ? "top" : "bot")).join("")}
     </div>
-    <div class="peers below" style="--cols:${Math.max(below.length, 1)}">${below.map((p) => slotOrBox(p)).join("")}</div>
+    <div class="peers below">${below.map((p) => boxMarkup(p, "bot")).join("")}</div>
   `;
 }
 
@@ -79,16 +79,9 @@ function portMarkup(port: StagePort, positioned = true, row = "top"): string {
   `;
 }
 
-function slotOrBox(port: StagePort): string {
-  if (!port.peerPortId) {
-    return `<div class="peer-slot" data-port="${escapeAttr(port.portId)}"></div>`;
-  }
-  return boxMarkup(port);
-}
-
-function boxMarkup(port: StagePort): string {
+function boxMarkup(port: StagePort, row = "top"): string {
   return `
-    <article class="peer-box" data-port="${escapeAttr(port.portId)}" data-up="${port.physicallyUp}">
+    <article class="peer-box" data-port="${escapeAttr(port.portId)}" data-up="${port.physicallyUp}" data-row="${row}">
       <span class="dot box-dot" data-up="${port.physicallyUp}"></span>
       <p class="peer-device">${escapeHtml(port.peerDeviceId || "")}</p>
       <p class="peer-port">${escapeHtml(port.peerPortId || "")}</p>
@@ -133,6 +126,43 @@ function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[])
   `;
 }
 
+const peerBoxPos = new Map<string, { left: number; top: number }>();
+
+export function rememberPeerBox(portId: string, left: number, top: number): void {
+  peerBoxPos.set(portId, { left, top });
+}
+
+export function placePeerBoxes(root: HTMLElement): void {
+  const stage = root.querySelector<HTMLElement>(".stage");
+  if (!stage || stage.dataset.kind !== "switch") {
+    return;
+  }
+  const stageBox = stage.getBoundingClientRect();
+  for (const box of root.querySelectorAll<HTMLElement>(".peer-box")) {
+    const portId = box.dataset.port || "";
+    box.style.position = "absolute";
+    box.style.transform = "none";
+    const saved = peerBoxPos.get(portId);
+    if (saved) {
+      box.style.left = `${saved.left}px`;
+      box.style.top = `${saved.top}px`;
+      continue;
+    }
+    const port = root.querySelector<HTMLElement>(`.port[data-port="${cssAttr(portId)}"]`);
+    if (!port) {
+      continue;
+    }
+    const p = port.getBoundingClientRect();
+    const above = box.dataset.row === "top";
+    const width = box.offsetWidth || 88;
+    const height = box.offsetHeight || 64;
+    const left = p.left + p.width / 2 - stageBox.left - width / 2;
+    const top = above ? p.top - stageBox.top - height - 18 : p.bottom - stageBox.top + 18;
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+  }
+}
+
 export function layoutWires(root: HTMLElement): void {
   const svg = root.querySelector<SVGSVGElement>("svg.wires");
   const canvas = root.querySelector<HTMLElement>(".canvas");
@@ -157,18 +187,13 @@ export function layoutWires(root: HTMLElement): void {
     const a = port.getBoundingClientRect();
     const b = box.getBoundingClientRect();
     const ax = a.left + a.width / 2 - stageBox.left;
-    const ay = a.top + a.height / 2 - stageBox.top;
     const bx = b.left + b.width / 2 - stageBox.left;
-    const by = b.top + b.height / 2 - stageBox.top;
-    const vertical = Math.abs(by - ay) >= Math.abs(bx - ax);
-    const above = by < ay;
-    const x1 = vertical ? ax : a.right - stageBox.left;
-    const y1 = vertical ? (above ? a.top : a.bottom) - stageBox.top : ay;
-    const x2 = vertical ? bx : b.left - stageBox.left;
-    const y2 = vertical ? (above ? b.bottom : b.top) - stageBox.top : by;
-    const d = vertical
-      ? `M ${x1} ${y1} C ${x1} ${y1 + (y2 - y1) * 0.45}, ${x2} ${y1 + (y2 - y1) * 0.45}, ${x2} ${y2}`
-      : `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+    const above = box.dataset.row === "top" || b.bottom < a.top;
+    const x1 = ax;
+    const y1 = (above ? a.top : a.bottom) - stageBox.top;
+    const x2 = bx;
+    const y2 = (above ? b.bottom : b.top) - stageBox.top;
+    const d = `M ${x1} ${y1} C ${x1} ${y1 + (y2 - y1) * 0.45}, ${x2} ${y1 + (y2 - y1) * 0.45}, ${x2} ${y2}`;
     const up = box.dataset.up === "true";
     lines.push(
       `<path d="${d}" class="${up ? "up" : "pending"}" />`,

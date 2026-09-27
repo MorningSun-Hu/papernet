@@ -160,6 +160,9 @@ button[disabled] {
   color: #07111d;
   font-weight: 650;
 }
+#pause {
+  font-weight: 650;
+}
 #end {
   background: transparent;
   border-color: #f87171;
@@ -447,6 +450,38 @@ button[disabled] {
   color: var(--cyan);
   z-index: 2;
 }
+.topo-tools {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(8, 18, 32, 0.92);
+}
+.topo-tools button {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+}
+.topo-zoom-val {
+  min-width: 3.2em;
+  text-align: center;
+  color: var(--cyan);
+  font-size: 0.85rem;
+}
+.topo-world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 70vh;
+  transform: scale(var(--topo-zoom, 1));
+  transform-origin: center center;
+}
 .topo-wires {
   width: 100%;
   height: 100%;
@@ -461,31 +496,53 @@ button[disabled] {
 .topo .node {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 120px;
+  width: 88px;
+  height: 64px;
   text-align: center;
   pointer-events: auto;
   cursor: grab;
 }
 .topo .node[data-kind="switch"] {
-  width: 150px;
+  width: 96px;
+  height: 58px;
 }
 .topo .node[data-kind="tap"] {
-  width: 96px;
+  width: 72px;
+  height: 52px;
+}
+.model-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 .model-img {
-  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
   display: block;
   filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.35));
   pointer-events: none;
 }
+.nid,
+.nmeta {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 160px;
+  margin: 0;
+  pointer-events: none;
+}
 .nid {
-  margin: 4px 0 0;
+  top: calc(100% + 4px);
   font-weight: 650;
   color: var(--text);
 }
 .nmeta {
-  margin: 2px 0 0;
+  top: calc(100% + 1.45em);
   font-size: 0.72rem;
   color: var(--muted);
 }
@@ -533,4 +590,40 @@ button[disabled] {
 .tip {
   color: var(--muted);
   font-size: 0.82rem;
+}
+.acc {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.acc-hd {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--cyan);
+  text-align: left;
+}
+.acc-hd strong {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.acc-bd {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+.acc .claim-meter,
+.acc .claim-list,
+.acc .tap-form {
+  margin: 0;
 }

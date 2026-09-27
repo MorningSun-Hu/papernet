@@ -30,6 +30,10 @@ assert.match(teacherMain, /结束课堂/);
 assert.match(teacherMain, /endClassroom/);
 assert.match(teacherMain, /pointerdown/);
 assert.match(teacherMain, /bindTopoDrag/);
+assert.match(teacherMain, /bindTopoTools/);
+assert.match(teacherMain, /data-topo-arrange/);
+assert.match(teacherMain, /topoZoom/);
+assert.match(teacherMain, /stepper\("routerPorts", "路由器口数", form.routerPorts, 1, 3\)/);
 
 assert.match(teacherMain, /网络分流器/);
 assert.equal(teacherMain.includes("特殊双口交换机"), false);
@@ -101,6 +105,9 @@ const canvasSrc = fs.readFileSync(path.join(root, "web/teacher/src/canvas.ts"), 
 assert.match(canvasSrc, /data-claimed/);
 assert.match(canvasSrc, /model-img/);
 assert.match(canvasSrc, /TOPO_MODEL/);
+assert.match(canvasSrc, /logical\/switch\.svg/);
+assert.match(canvasSrc, /data-topo-zoom/);
+assert.match(canvasSrc, /整理/);
 assert.equal(canvasSrc.includes("<image "), false);
 
 const granted = applyTopoEvent(snap, {

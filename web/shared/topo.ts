@@ -168,7 +168,6 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
 }
 
 export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView {
-  const width = 960;
   const height = 640;
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
   const row: Record<Exclude<DeviceKind, "tap"> | "tap-free", TopoDevice[]> = {
@@ -187,11 +186,15 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
       row[device.kind].push(device);
     }
   }
+  const gap = 168;
+  const pad = 110;
+  const maxN = Math.max(1, row.pc.length, row.switch.length, row.router.length, row["tap-free"].length);
+  const width = Math.max(960, pad * 2 + gap * (maxN - 1));
   const nodes: TopoNode[] = [];
-  placeRow(nodes, row.pc, 90, width);
-  placeRow(nodes, row.switch, 250, width);
-  placeRow(nodes, row.router, 400, width);
-  placeRow(nodes, row["tap-free"], 520, width);
+  placeRow(nodes, row.pc, 90, width, pad, gap);
+  placeRow(nodes, row.switch, 250, width, pad, gap);
+  placeRow(nodes, row.router, 400, width, pad, gap);
+  placeRow(nodes, row["tap-free"], 520, width, pad, gap);
   for (const node of nodes) {
     const pos = layout[node.id];
     if (pos) {
@@ -237,15 +240,25 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
   return { width, height, nodes, edges };
 }
 
-function placeRow(nodes: TopoNode[], devices: TopoDevice[], y: number, width: number): void {
+function placeRow(
+  nodes: TopoNode[],
+  devices: TopoDevice[],
+  y: number,
+  width: number,
+  pad: number,
+  gap: number,
+): void {
   const n = devices.length;
   if (!n) {
     return;
   }
-  const pad = 100;
-  const span = width - pad * 2;
   devices.forEach((device, i) => {
-    const x = n === 1 ? width / 2 : pad + (span * i) / (n - 1);
+    let x = width / 2;
+    if (n > 1) {
+      const span = Math.max(gap * (n - 1), width - pad * 2);
+      const start = (width - span) / 2;
+      x = start + (span * i) / (n - 1);
+    }
     nodes.push({
       id: device.id,
       kind: device.kind,

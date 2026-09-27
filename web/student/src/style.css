@@ -782,7 +782,8 @@ main {
 .stage[data-kind="tap"] {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(160px, auto) auto;
+  grid-template-rows: auto auto auto;
+  align-content: center;
   gap: 8px;
 }
 .peers {
@@ -1190,9 +1191,9 @@ main {
   height: 22%;
 }
 .canvas[data-kind="switch"] .port {
-  width: 3.5%;
-  height: 28%;
-  min-width: 18px;
+  width: 3.8%;
+  height: 18%;
+  min-width: 0;
 }
 .port[data-row="top"] .pid {
   top: auto;
@@ -1257,4 +1258,104 @@ main {
 .stage[data-kind="tap"] .peers.below {
   grid-template-columns: repeat(2, minmax(160px, 280px));
   justify-content: center;
+}
+.stage[data-kind="switch"] .wires {
+  z-index: 2;
+}
+.stage[data-kind="switch"] .peers {
+  display: block;
+  min-height: 78px;
+  pointer-events: none;
+}
+.stage[data-kind="switch"] .peer-slot {
+  min-height: 0;
+}
+.stage[data-kind="switch"] .peer-box {
+  pointer-events: auto;
+  z-index: 6;
+  padding: 6px 10px 8px;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  width: max-content;
+  min-width: 4.6rem;
+  max-width: none;
+  height: auto;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.stage[data-kind="switch"] .peer-box.dragging {
+  cursor: grabbing;
+  z-index: 8;
+  border-color: var(--cyan);
+}
+.stage[data-kind="switch"] .peer-box p {
+  margin: 0;
+}
+.stage[data-kind="switch"] .peer-device,
+.stage[data-kind="switch"] .peer-port {
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+.stage[data-kind="switch"] .peer-link {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
+}
+.stage[data-kind="switch"] .peer-box[data-row="top"] .box-dot {
+  left: 50%;
+  top: auto;
+  bottom: -5px;
+  transform: translateX(-50%);
+}
+.stage[data-kind="switch"] .peer-box[data-row="bot"] .box-dot {
+  left: 50%;
+  top: -5px;
+  transform: translateX(-50%);
+}
+.stage[data-kind="switch"] .port .pid {
+  top: auto;
+  bottom: calc(100% + 1px);
+  font-size: 0.52rem;
+  padding: 0 3px;
+  line-height: 1.15;
+}
+.stage[data-kind="switch"] .port-dot {
+  display: none;
+}
+.switch-brand {
+  position: absolute;
+  left: 12.2%;
+  top: 38%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  pointer-events: none;
+  color: #f4fbff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  line-height: 1.05;
+}
+.switch-brand strong {
+  font-size: clamp(0.72rem, 1.55vw, 1.05rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.switch-brand span {
+  font-size: clamp(0.38rem, 0.78vw, 0.58rem);
+  letter-spacing: 0.16em;
+  color: #9fb6c8;
+}
+.toast-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  z-index: 40;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: rgba(18, 14, 6, 0.94);
+  color: var(--warn);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
 }

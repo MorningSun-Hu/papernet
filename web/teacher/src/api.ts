@@ -54,6 +54,15 @@ export async function openClaim(classroomId: string): Promise<string> {
   return state;
 }
 
+export async function pauseClaim(classroomId: string): Promise<string> {
+  const { status, json } = await post(`/api/v1/classrooms/${classroomId}/pause-claim`);
+  if (status >= 400) {
+    throw new Error(json.error?.message || "暂停领取失败");
+  }
+  const state = typeof json.data?.claim_state === "string" ? json.data.claim_state : "paused";
+  return state;
+}
+
 export async function fetchSnapshot(classroomId: string): Promise<unknown> {
   const res = await fetch(`/api/v1/classrooms/${encodeURIComponent(classroomId)}/snapshot`, {
     headers: { "X-Client-Kind": CLIENT_KIND_TEACHER },

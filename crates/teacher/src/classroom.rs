@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use papernet_shared::{
     frame_macs, is_reachable, is_unicast_mac, link_id_for, mask_is_fixed, materialize_inventory,
@@ -231,7 +231,7 @@ impl Classroom {
 
     fn claim_or_wait(&mut self, connection_id: String) -> JoinOutcome {
         match self.claim_state {
-            ClaimState::Draft => JoinOutcome::WaitingOpen { connection_id },
+            ClaimState::Draft | ClaimState::Paused => JoinOutcome::WaitingOpen { connection_id },
             ClaimState::Open | ClaimState::Full => self.try_claim(connection_id),
         }
     }
@@ -301,12 +301,23 @@ impl Classroom {
         self.rebuild_tables();
     }
 
-    pub fn open_claim(&mut self) -> Vec<OpenClaimEvent> {
+    pub fn drop_if_waiting(&mut self, connection_id: &str) -> bool {
+        match self.connections.get(connection_id) {
+            Some(conn) if conn.device_id.is_none() => {
+                self.connections.remove(connection_id);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn open_claim(&mut self, live_connections: &HashSet<String>) -> Vec<OpenClaimEvent> {
         self.claim_state = ClaimState::Open;
         let mut waiters: Vec<String> = self
             .connections
             .values()
             .filter(|c| c.device_id.is_none())
+            .filter(|c| live_connections.contains(&c.connection_id))
             .map(|c| c.connection_id.clone())
             .collect();
         fastrand::shuffle(&mut waiters);
@@ -335,6 +346,12 @@ impl Classroom {
             self.claim_state = ClaimState::Full;
         }
         events
+    }
+
+    pub fn pause_claim(&mut self) {
+        if self.claim_state != ClaimState::Full {
+            self.claim_state = ClaimState::Paused;
+        }
     }
 
     pub fn device_snapshot(&self, device_id: &str) -> Value {
@@ -1142,5 +1159,97 @@ mod tests {
             class.tap_attaches.get("TAP1").cloned(),
             Some(link_id_for("S1/02", "R1/01"))
         );
+    }
+
+    #[test]
+    fn open_claim_skips_waiters_without_live_ws() {
+        use std::collections::HashSet;
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }, PcSpec { id: "PC2".into() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        let waiter = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::WaitingOpen { connection_id } => connection_id,
+            _ => panic!("expected waiting"),
+        };
+        class.open_claim(&HashSet::new());
+        assert!(class.devices.values().all(|d| d.claimed_connection_id.is_none()));
+        assert!(class.connections[&waiter].device_id.is_none());
+        assert_eq!(class.claim_state, ClaimState::Open);
+
+        let live = HashSet::from([waiter.clone()]);
+        class.open_claim(&live);
+        let got = class.connections[&waiter].device_id.clone().expect("granted");
+        assert!(got == "PC1" || got == "PC2");
+        assert_eq!(class.devices[&got].claimed_connection_id.as_deref(), Some(waiter.as_str()));
+    }
+
+    #[test]
+    fn drop_if_waiting_keeps_claimed_connections() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        let waiting = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::WaitingOpen { connection_id } => connection_id,
+            _ => panic!("expected waiting"),
+        };
+        assert!(class.drop_if_waiting(&waiting));
+        assert!(!class.connections.contains_key(&waiting));
+
+        class.claim_state = ClaimState::Open;
+        let claimed = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::Claimed { connection_id, .. } => connection_id,
+            _ => panic!("expected claimed"),
+        };
+        assert!(!class.drop_if_waiting(&claimed));
+        assert!(class.connections.contains_key(&claimed));
+        assert_eq!(class.devices["PC1"].claimed_connection_id.as_deref(), Some(claimed.as_str()));
+    }
+
+    #[test]
+    fn pause_claim_holds_new_joins_until_reopened() {
+        use std::collections::HashSet;
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }, PcSpec { id: "PC2".into() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.claim_state = ClaimState::Open;
+        let first = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::Claimed { connection_id, .. } => connection_id,
+            _ => panic!("expected claimed"),
+        };
+        let first_device = class.connections[&first].device_id.clone().expect("device");
+        class.pause_claim();
+        assert_eq!(class.claim_state, ClaimState::Paused);
+        let waiting = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::WaitingOpen { connection_id } => connection_id,
+            _ => panic!("expected waiting"),
+        };
+        assert!(class.connections[&waiting].device_id.is_none());
+        class.open_claim(&HashSet::from([waiting.clone()]));
+        assert_eq!(class.claim_state, ClaimState::Full);
+        let second = class.connections[&waiting].device_id.clone().expect("granted");
+        assert_ne!(second, first_device);
+        class.pause_claim();
+        assert_eq!(class.claim_state, ClaimState::Full);
     }
 }

@@ -98,6 +98,7 @@ pub fn port_id(device_id: &str, index: u32) -> String {
 pub enum ClaimState {
     Draft,
     Open,
+    Paused,
     Full,
 }
 
@@ -106,6 +107,7 @@ impl ClaimState {
         match self {
             Self::Draft => "draft",
             Self::Open => "open",
+            Self::Paused => "paused",
             Self::Full => "full",
         }
     }

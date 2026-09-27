@@ -2,7 +2,7 @@ import "./style.css";
 import { buildInventory, formatClaimRoster, targetClassroomInventory, wsPath } from "@shared/claim";
 import { brandLockup, hudClock } from "@shared/brand";
 import { applyTopoEvent, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
-import { attachTap, createClassroom, endClassroom, fetchSnapshot, loadClassroomId, openClaim, setMode, unbindDevice } from "./api";
+import { attachTap, createClassroom, endClassroom, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
 import { patchTopo, renderCanvas } from "./canvas";
 
 const app = mount();
@@ -46,13 +46,25 @@ let targetScene = false;
 let menu: { x: number; y: number; deviceId: string } | null = null;
 let layout: TopoLayout = {};
 let lastView: TopoView | null = null;
+let topoZoom = 100;
+let railOpen: "claim" | "tap" | "" = "claim";
+let claimFoldedByFull = false;
+
+const FIELD_LIMIT: Record<string, { min: number; max: number }> = {
+  pcCount: { min: 0, max: 48 },
+  switchCount: { min: 0, max: 24 },
+  routerCount: { min: 0, max: 12 },
+  tapCount: { min: 0, max: 8 },
+  switchPorts: { min: 1, max: 24 },
+  routerPorts: { min: 1, max: 3 },
+};
 
 function render(): void {
-  const claiming = claimState === "open" || claimState === "full";
-  const canvas = snap ? renderCanvas(snap, {}, layout) : null;
+  const live = Boolean(classroomId);
+  const canvas = snap ? renderCanvas(snap, {}, layout, topoZoom) : null;
   lastView = canvas?.view ?? null;
   app.innerHTML = `
-    <main class="console" data-phase="${claiming ? "live" : "draft"}">
+    <main class="console" data-phase="${live ? "live" : "draft"}">
       <header class="mast hud">
         ${brandLockup()}
         <div class="brand">
@@ -60,10 +72,10 @@ function render(): void {
           <p class="eyebrow">以实践见真知 · 让网络触手可及</p>
         </div>
         <p class="hud-clock">${hudClock()}</p>
-        ${claiming ? `${modeBar()}<button type="button" id="end">结束课堂</button>` : ""}
+        ${live ? `${modeBar()}${claimToggle()}<button type="button" id="end">结束课堂</button>` : ""}
       </header>
-      ${claiming ? liveDeck(canvas?.html ?? "") : `<div class="topo-empty"><p>暂无拓扑，先确定本课设备</p></div>`}
-      ${claiming ? "" : rosterDialog()}
+      ${live ? liveDeck(canvas?.html ?? "") : `<div class="topo-empty"><p>暂无拓扑，先确定本课设备</p></div>`}
+      ${live ? "" : rosterDialog()}
       ${unbindMenu()}
     </main>
   `;
@@ -71,12 +83,40 @@ function render(): void {
 }
 
 function liveDeck(canvasHtml: string): string {
+  const roster = snap ? formatClaimRoster(snap.devices) : { taken: 0, total: 0, claimed: "", free: "" };
+  if (roster.total > 0 && roster.taken === roster.total) {
+    if (!claimFoldedByFull) {
+      if (railOpen === "claim") {
+        railOpen = "";
+      }
+      claimFoldedByFull = true;
+    }
+  } else {
+    claimFoldedByFull = false;
+  }
+  const claimOpen = railOpen === "claim";
+  const tapHtml = tapBar();
+  const tapOpen = railOpen === "tap";
   return `
     <div class="deck">
       <aside class="rail">
-        <h2>设备领取</h2>
-        ${claimPanel()}
-        ${tapBar()}
+        <section class="acc" data-acc="claim" data-open="${claimOpen}">
+          <button type="button" class="acc-hd" data-acc-toggle="claim">
+            <span>设备领取</span>
+            <strong>已领取 ${roster.taken}/${roster.total}</strong>
+          </button>
+          ${claimOpen ? `<div class="acc-bd">${claimPanel()}</div>` : ""}
+        </section>
+        ${
+          tapHtml
+            ? `<section class="acc" data-acc="tap" data-open="${tapOpen}">
+          <button type="button" class="acc-hd" data-acc-toggle="tap">
+            <span>挂接网络分流器</span>
+          </button>
+          ${tapOpen ? `<div class="acc-bd">${tapHtml}</div>` : ""}
+        </section>`
+            : ""
+        }
         <p class="tip">从左侧查看领取进度，在拓扑图中右击已领设备可解除绑定。</p>
       </aside>
       ${canvasHtml}
@@ -95,7 +135,7 @@ function rosterDialog(): string {
           ${brandLockup()}
           <div>
             <h3>确定本课设备</h3>
-            <p class="dlg-sub">课前定员、定设备，开放领取后本窗口收起。</p>
+            <p class="dlg-sub">课前定员、定设备，创建课堂后本窗口收起。</p>
           </div>
         </header>
         <section class="dlg-block">
@@ -112,7 +152,7 @@ function rosterDialog(): string {
           <h4>定设备</h4>
           <div class="grid">
             ${stepper("switchPorts", "交换机口数", form.switchPorts, 1, 24)}
-            ${stepper("routerPorts", "路由器口数", form.routerPorts, 1, 8)}
+            ${stepper("routerPorts", "路由器口数", form.routerPorts, 1, 3)}
           </div>
           <p class="hint">应用于每台交换机：${escapeHtml(switchIds)}。设备：${escapeHtml(routerIds)}。</p>
           <fieldset class="preset-ips">
@@ -130,7 +170,6 @@ function rosterDialog(): string {
         <div class="dlg-actions">
           <button type="button" id="target-scene">载入目标课堂</button>
           <button type="submit" id="create">创建课堂</button>
-          <button type="button" id="open" ${classroomId ? "" : "disabled"}>开放领取</button>
         </div>
       </form>
     </div>
@@ -151,6 +190,9 @@ function statusLine(): string {
   }
   if (!classroomId) {
     return "填写数量后创建课堂。学生此时看到等待文案。";
+  }
+  if (claimState === "paused") {
+    return "领取已暂停。学生此时看到等待文案。";
   }
   if (claimState !== "open" && claimState !== "full") {
     return "课堂已创建，尚未开放领取。";
@@ -224,6 +266,17 @@ function modeBar(): string {
   `;
 }
 
+function claimToggle(): string {
+  if (!classroomId) {
+    return "";
+  }
+  const full = claimState === "full";
+  if (claimState === "open") {
+    return `<button type="button" id="pause"${full ? " disabled" : ""}>暂停领取</button>`;
+  }
+  return `<button type="button" id="open"${full ? " disabled" : ""}>开放领取</button>`;
+}
+
 function tapBar(): string {
   if (!snap) {
     return "";
@@ -269,18 +322,13 @@ function unbindMenu(): string {
 function bind(): void {
   const roster = document.querySelector<HTMLFormElement>("#roster");
   roster?.addEventListener("input", () => {
-    const data = new FormData(roster);
-    form.title = String(data.get("title") || form.title);
-    form.pcCount = num(data, "pcCount", form.pcCount);
-    form.switchCount = num(data, "switchCount", form.switchCount);
-    form.switchPorts = num(data, "switchPorts", form.switchPorts);
-    form.routerCount = num(data, "routerCount", form.routerCount);
-    form.routerPorts = num(data, "routerPorts", form.routerPorts);
-    form.tapCount = num(data, "tapCount", form.tapCount);
-    form.routerIps = Array.from({ length: Math.max(1, form.routerPorts) }, (_, i) =>
-      String(data.get(`router_ip_${i}`) || ""),
-    );
-    targetScene = false;
+    clampRosterInputs(roster, false);
+    syncRosterForm(roster);
+  });
+  roster?.addEventListener("change", () => {
+    clampRosterInputs(roster, true);
+    syncRosterForm(roster);
+    render();
   });
   roster?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -311,6 +359,29 @@ function bind(): void {
     }
     render();
   });
+  document.querySelector<HTMLButtonElement>("#pause")?.addEventListener("click", async () => {
+    if (!classroomId) {
+      return;
+    }
+    notice = "";
+    try {
+      claimState = await pauseClaim(classroomId);
+      await loadSnap();
+    } catch (err) {
+      notice = err instanceof Error ? err.message : "暂停领取失败";
+    }
+    render();
+  });
+  for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-acc-toggle]")) {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.accToggle;
+      if (id !== "claim" && id !== "tap") {
+        return;
+      }
+      railOpen = railOpen === id ? "" : id;
+      render();
+    });
+  }
   document.querySelector<HTMLButtonElement>("#target-scene")?.addEventListener("click", () => {
     form.title = "目标课堂";
     form.pcCount = 2;
@@ -336,6 +407,8 @@ function bind(): void {
       snap = null;
       lastView = null;
       layout = {};
+      railOpen = "claim";
+      claimFoldedByFull = false;
       if (socket) {
         socket.onclose = null;
         socket.close();
@@ -347,11 +420,78 @@ function bind(): void {
     render();
   });
   bindTopoDrag();
+  bindTopoTools();
+}
+
+function bindTopoTools(): void {
+  const tools = app.querySelector(".topo-tools");
+  if (!tools) {
+    return;
+  }
+  tools.querySelector<HTMLButtonElement>("[data-topo-zoom=out]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    topoZoom = Math.max(50, topoZoom - 10);
+    render();
+  });
+  tools.querySelector<HTMLButtonElement>("[data-topo-zoom=in]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    topoZoom = Math.min(110, topoZoom + 10);
+    render();
+  });
+  tools.querySelector<HTMLButtonElement>("[data-topo-arrange]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    layout = {};
+    render();
+  });
 }
 
 function num(data: FormData, name: string, fallback: number): number {
   const raw = Number(data.get(name));
-  return Number.isFinite(raw) ? raw : fallback;
+  if (!Number.isFinite(raw)) {
+    return fallback;
+  }
+  const lim = FIELD_LIMIT[name];
+  if (!lim) {
+    return raw;
+  }
+  return Math.min(lim.max, Math.max(lim.min, raw));
+}
+
+function clampRosterInputs(roster: HTMLFormElement, clampMin: boolean): void {
+  for (const el of roster.querySelectorAll<HTMLInputElement>("input[type=number]")) {
+    const lim = FIELD_LIMIT[el.name];
+    if (!lim || el.value === "") {
+      continue;
+    }
+    const n = Number(el.value);
+    if (!Number.isFinite(n)) {
+      continue;
+    }
+    let next = n;
+    if (n > lim.max) {
+      next = lim.max;
+    } else if (clampMin && n < lim.min) {
+      next = lim.min;
+    }
+    if (String(next) !== el.value) {
+      el.value = String(next);
+    }
+  }
+}
+
+function syncRosterForm(roster: HTMLFormElement): void {
+  const data = new FormData(roster);
+  form.title = String(data.get("title") || form.title);
+  form.pcCount = num(data, "pcCount", form.pcCount);
+  form.switchCount = num(data, "switchCount", form.switchCount);
+  form.switchPorts = num(data, "switchPorts", form.switchPorts);
+  form.routerCount = num(data, "routerCount", form.routerCount);
+  form.routerPorts = num(data, "routerPorts", form.routerPorts);
+  form.tapCount = num(data, "tapCount", form.tapCount);
+  form.routerIps = Array.from({ length: Math.max(1, form.routerPorts) }, (_, i) =>
+    String(data.get(`router_ip_${i}`) || ""),
+  );
+  targetScene = false;
 }
 
 function inventoryFromForm() {
@@ -376,8 +516,8 @@ function inventoryFromForm() {
 
 function bindTopoDrag(): void {
   const topo = app.querySelector<HTMLElement>(".topo");
-  const svg = topo?.querySelector<SVGSVGElement>("svg.topo-wires");
-  if (!topo || !svg) {
+  const world = topo?.querySelector<HTMLElement>(".topo-world");
+  if (!topo || !world) {
     return;
   }
   for (const g of topo.querySelectorAll<HTMLElement>(".node")) {
@@ -391,11 +531,11 @@ function bindTopoDrag(): void {
       }
       ev.preventDefault();
       const origin = lastView?.nodes.find((n) => n.id === id);
-      const pt = svgPoint(svg, ev);
+      const pt = pointerToLayout(world, ev);
       const dx = pt.x - (origin?.x ?? 0);
       const dy = pt.y - (origin?.y ?? 0);
       const move = (e: PointerEvent) => {
-        const next = svgPoint(svg, e);
+        const next = pointerToLayout(world, e);
         layout = { ...layout, [id]: { x: next.x - dx, y: next.y - dy } };
         if (!snap) {
           return;
@@ -406,24 +546,27 @@ function bindTopoDrag(): void {
       const up = () => {
         g.removeEventListener("pointermove", move);
         g.removeEventListener("pointerup", up);
+        g.removeEventListener("pointercancel", up);
       };
       g.addEventListener("pointermove", move);
       g.addEventListener("pointerup", up);
+      g.addEventListener("pointercancel", up);
       g.setPointerCapture(ev.pointerId);
     });
   }
 }
 
-function svgPoint(svg: SVGSVGElement, ev: PointerEvent): { x: number; y: number } {
-  const pt = svg.createSVGPoint();
-  pt.x = ev.clientX;
-  pt.y = ev.clientY;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) {
+function pointerToLayout(world: HTMLElement, ev: PointerEvent): { x: number; y: number } {
+  const rect = world.getBoundingClientRect();
+  const width = lastView?.width ?? 960;
+  const height = lastView?.height ?? 640;
+  if (!rect.width || !rect.height) {
     return { x: 0, y: 0 };
   }
-  const mapped = pt.matrixTransform(ctm.inverse());
-  return { x: mapped.x, y: mapped.y };
+  return {
+    x: ((ev.clientX - rect.left) / rect.width) * width,
+    y: ((ev.clientY - rect.top) / rect.height) * height,
+  };
 }
 
 function escapeAttr(text: string): string {
@@ -442,7 +585,12 @@ async function loadSnap(): Promise<void> {
     const raw = await fetchSnapshot(classroomId);
     snap = parseTopoSnapshot(raw);
     const rec = raw && typeof raw === "object" ? (raw as { claim_state?: string }) : {};
-    if (rec.claim_state === "open" || rec.claim_state === "full" || rec.claim_state === "draft") {
+    if (
+      rec.claim_state === "open" ||
+      rec.claim_state === "full" ||
+      rec.claim_state === "draft" ||
+      rec.claim_state === "paused"
+    ) {
       claimState = rec.claim_state;
     }
     openSocket();

@@ -360,11 +360,21 @@ async fn end_classroom_closes_student_ws() {
         .unwrap();
     assert_eq!(ended.status(), StatusCode::OK);
 
-    let close = ws.next().await;
-    match close {
-        None => {}
-        Some(Ok(Message::Close(_))) => {}
-        Some(Err(_)) => {}
-        other => panic!("expected ws close, got {other:?}"),
+    let first = ws.next().await.expect("ended or close");
+    match first {
+        Ok(Message::Text(t)) => {
+            let v: Value = serde_json::from_str(&t.to_string()).unwrap();
+            assert_eq!(v["event"], "classroom.ended");
+            let close = ws.next().await;
+            match close {
+                None => {}
+                Some(Ok(Message::Close(_))) => {}
+                Some(Err(_)) => {}
+                other => panic!("expected ws close, got {other:?}"),
+            }
+        }
+        Ok(Message::Close(_)) => {}
+        Err(_) => {}
+        other => panic!("expected classroom.ended or close, got {other:?}"),
     }
 }

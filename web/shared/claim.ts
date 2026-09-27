@@ -1,6 +1,7 @@
 export const MSG_WAITING_OPEN = "请等待教师确定本课设备";
 export const MSG_CLASSROOM_FULL = "本课设备已领完，请看教师屏";
 export const MSG_WRONG_PORT = "端口不正确";
+export const MSG_NO_CLASSROOM = "暂无课堂，等待老师创建";
 
 export const CLIENT_KIND_HOSTED = "student-hosted";
 export const CLIENT_KIND_STANDALONE = "student-standalone";
@@ -273,6 +274,10 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     };
   }
 
+  if (httpStatus === 404 || str(error.code) === "NO_CLASSROOM") {
+    return { kind: "idle", message: MSG_NO_CLASSROOM };
+  }
+
   const msg = str(error.message) || str(data.message) || "当前没有课堂";
   return { kind: "error", message: msg };
 }
@@ -311,6 +316,9 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
       kind: "full",
       message: str(root.message) || MSG_CLASSROOM_FULL,
     };
+  }
+  if (event === "classroom.ended") {
+    return { kind: "idle", message: MSG_NO_CLASSROOM };
   }
   if (event === "topology.updated" && screen.kind === "claimed") {
     const next = applyTopologyPatch(screen.device, screen.links, root);

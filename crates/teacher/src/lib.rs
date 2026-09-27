@@ -3,7 +3,7 @@
 mod classroom;
 mod db;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +37,7 @@ pub struct AppState {
 
 struct Store {
     classrooms: HashMap<String, Classroom>,
+    active_id: Option<String>,
 }
 
 struct Hub {
@@ -54,7 +55,10 @@ impl AppState {
         let classrooms = db::load_classrooms(&conn)?;
         db::clear_claim_bindings(&conn).map_err(|e| e.to_string())?;
         Ok(Self {
-            inner: Arc::new(Mutex::new(Store { classrooms })),
+            inner: Arc::new(Mutex::new(Store {
+                classrooms,
+                active_id: None,
+            })),
             db: Arc::new(Mutex::new(conn)),
             hub: Arc::new(Mutex::new(Hub {
                 txs: HashMap::new(),
@@ -81,6 +85,10 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/api/v1/classrooms/{id}/open-claim",
             post(open_claim),
+        )
+        .route(
+            "/api/v1/classrooms/{id}/pause-claim",
+            post(pause_claim),
         )
         .route("/api/v1/classrooms/{id}/snapshot", get(snapshot))
         .route("/api/v1/classrooms/{id}/end", post(end_classroom))
@@ -145,6 +153,7 @@ async fn create_classroom(
     {
         let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
         store.classrooms.insert(classroom_id.clone(), class);
+        store.active_id = Some(classroom_id.clone());
     }
     Ok((
         StatusCode::OK,
@@ -217,13 +226,17 @@ async fn open_claim(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let live: HashSet<String> = {
+        let hub = state.hub.lock().map_err(|_| internal("hub lock"))?;
+        hub.txs.keys().cloned().collect()
+    };
     let (events, claim_state) = {
         let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
         let class = store
             .classrooms
             .get_mut(&id)
             .ok_or_else(|| not_found("NO_CLASSROOM", "课堂不存在"))?;
-        let events = class.open_claim();
+        let events = class.open_claim(&live);
         (events, class.claim_state)
     };
     {
@@ -285,6 +298,33 @@ async fn open_claim(
     ))
 }
 
+async fn pause_claim(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let claim_state = {
+        let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
+        let class = store
+            .classrooms
+            .get_mut(&id)
+            .ok_or_else(|| not_found("NO_CLASSROOM", "课堂不存在"))?;
+        class.pause_claim();
+        class.claim_state
+    };
+    {
+        let db = state.db.lock().map_err(|_| internal("db lock"))?;
+        db::update_claim_state(&db, &id, claim_state).map_err(|e| internal(&e.to_string()))?;
+    }
+    emit_online(&state, &id);
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "data": {"claim_state": claim_state.as_str()}
+        })),
+    ))
+}
+
 async fn put_port(
     State(state): State<AppState>,
     AxumPath((device_id, port_id)): AxumPath<(String, String)>,
@@ -328,7 +368,11 @@ async fn snapshot(
     if hdr(&headers, "x-client-kind").as_deref() != Some("teacher") {
         return Err(conflict("NOT_OWNER", "仅教师可查看快照"));
     }
-    let store = state.inner.lock().map_err(|_| internal("store lock"))?;
+    let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
+    if !store.classrooms.contains_key(&id) {
+        return Err(not_found("NO_CLASSROOM", "课堂不存在"));
+    }
+    store.active_id = Some(id.clone());
     let class = store
         .classrooms
         .get(&id)
@@ -359,12 +403,16 @@ async fn end_classroom(
     }
     let conn_ids = {
         let mut store = state.inner.lock().map_err(|_| internal("store lock"))?;
+        if store.active_id.as_deref() == Some(id.as_str()) {
+            store.active_id = None;
+        }
         match store.classrooms.remove(&id) {
             Some(class) => class.connections.keys().cloned().collect::<Vec<_>>(),
             None => Vec::new(),
         }
     };
     if let Ok(mut hub) = state.hub.lock() {
+        hub.broadcast(json!({"event": "classroom.ended"}));
         for cid in &conn_ids {
             hub.send(cid, WsOut::Close);
             hub.txs.remove(cid);
@@ -688,10 +736,9 @@ fn tap_attach_json(state: &AppState, classroom_id: &str) -> Value {
 
 fn current_classroom_id(store: &Store) -> Option<String> {
     store
-        .classrooms
-        .values()
-        .max_by_key(|c| c.created_at)
-        .map(|c| c.classroom_id.clone())
+        .active_id
+        .clone()
+        .filter(|id| store.classrooms.contains_key(id))
 }
 
 impl Hub {
@@ -811,6 +858,13 @@ fn unregister(state: &AppState, connection_id: Option<&str>) {
     if let Some(id) = connection_id {
         if let Ok(mut hub) = state.hub.lock() {
             hub.txs.remove(id);
+        }
+        if let Ok(mut store) = state.inner.lock() {
+            for class in store.classrooms.values_mut() {
+                if class.drop_if_waiting(id) {
+                    break;
+                }
+            }
         }
     }
 }

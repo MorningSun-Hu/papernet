@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
+  MSG_NO_CLASSROOM,
   ROLE_LABEL,
   ROLE_SHELL,
   applyWsEvent,
@@ -20,6 +21,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 assert.equal(MSG_WAITING_OPEN, "请等待教师确定本课设备");
 assert.equal(MSG_CLASSROOM_FULL, "本课设备已领完，请看教师屏");
+assert.equal(MSG_NO_CLASSROOM, "暂无课堂，等待老师创建");
 
 const waiting = screenFromHttp(200, {
   ok: true,
@@ -86,6 +88,17 @@ const fullEvent = applyWsEvent(waiting, {
 assert.equal(fullEvent.kind, "full");
 assert.equal(fullEvent.message, MSG_CLASSROOM_FULL);
 
+const none = screenFromHttp(404, {
+  ok: false,
+  error: { code: "NO_CLASSROOM", message: "当前没有课堂" },
+});
+assert.equal(none.kind, "idle");
+assert.equal(none.message, MSG_NO_CLASSROOM);
+
+const ended = applyWsEvent(full, { event: "classroom.ended" });
+assert.equal(ended.kind, "idle");
+assert.equal(ended.message, MSG_NO_CLASSROOM);
+
 const firstJoin = joinBody();
 assert.equal(firstJoin.client_kind, "student-hosted");
 assert.equal(Object.hasOwn(firstJoin, "connection_id"), false);
@@ -120,9 +133,13 @@ assert.equal(inventory.taps[0].id, "TAP1");
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.ok(studentMain.includes("MSG_WAITING_OPEN"));
 assert.ok(studentMain.includes("MSG_CLASSROOM_FULL"));
+assert.ok(studentMain.includes("MSG_NO_CLASSROOM"));
+assert.ok(studentMain.includes('kind === "full"'));
 assert.ok(studentMain.includes("wsPath"));
 assert.ok(studentMain.includes("data-kind"));
 assert.ok(studentMain.includes("documentTitle"));
+assert.ok(studentMain.includes("visibilityState"));
+assert.ok(studentMain.includes("prerendering"));
 
 const studentApi = fs.readFileSync(path.join(root, "web/student/src/api.ts"), "utf8");
 assert.ok(studentApi.includes("/api/v1/classrooms/join"));

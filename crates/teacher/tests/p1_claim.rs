@@ -514,3 +514,182 @@ async fn teacher_unbind_releases_role_for_reclaim() {
     assert_eq!(again["data"]["status"], "claimed");
     assert_eq!(again["data"]["device"]["id"], device_id);
 }
+
+async fn create_six_devices(state: AppState) -> String {
+    let (_, v) = post(
+        state,
+        "/api/v1/classrooms",
+        json!({
+            "title": "六年级设备",
+            "inventory": {
+                "routers": [{"id": "R1", "port_count": 3}],
+                "switches": [{"id": "S1", "port_count": 4}, {"id": "S2", "port_count": 4}],
+                "pcs": [{"id": "PC1"}, {"id": "PC2"}],
+                "taps": [{"id": "TAP1"}]
+            }
+        }),
+    )
+    .await;
+    v["data"]["classroom_id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn six_devices_accept_six_joins() {
+    let (state, _dir) = state();
+    let id = create_six_devices(state.clone()).await;
+    let (st, _) = post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let mut ids = Vec::new();
+    for _ in 0..6 {
+        let (status, v) = post(
+            state.clone(),
+            "/api/v1/classrooms/join",
+            json!({"client_kind": "student-hosted"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(v["data"]["status"], "claimed");
+        ids.push(v["data"]["device"]["id"].as_str().unwrap().to_string());
+    }
+    ids.sort();
+    assert_eq!(ids, ["PC1", "PC2", "R1", "S1", "S2", "TAP1"]);
+    let (status, v) = post(
+        state,
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(v["data"]["status"], "full");
+}
+
+#[tokio::test]
+async fn disconnected_waiter_does_not_consume_device_on_open_claim() {
+    let (state, _dir) = state();
+    let id = create_with_pcs(state.clone(), 2).await;
+    let (_, live_wait) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    let (_, dead_wait) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    let live_id = live_wait["data"]["connection_id"].as_str().unwrap().to_string();
+    let dead_id = dead_wait["data"]["connection_id"].as_str().unwrap().to_string();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let serve_state = state.clone();
+    tokio::spawn(async move {
+        axum::serve(listener, app(serve_state)).await.unwrap();
+    });
+
+    let live_url = format!("ws://{addr}/ws?classroom_id={id}&connection_id={live_id}");
+    let dead_url = format!("ws://{addr}/ws?classroom_id={id}&connection_id={dead_id}");
+    let (mut live_ws, _) = tokio_tungstenite::connect_async(&live_url).await.expect("ws live");
+    let (mut dead_ws, _) = tokio_tungstenite::connect_async(&dead_url).await.expect("ws dead");
+    let live_hello: Value =
+        serde_json::from_str(&live_ws.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(live_hello["event"], "hello");
+    let dead_hello: Value =
+        serde_json::from_str(&dead_ws.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(dead_hello["event"], "hello");
+    drop(dead_ws);
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+
+    let granted: Value =
+        serde_json::from_str(&live_ws.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(granted["event"], "claim.granted");
+
+    let (st, third) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(third["data"]["status"], "claimed");
+    assert_ne!(third["data"]["device"]["id"], granted["device"]["id"]);
+
+    let (full_st, full) = post(
+        state,
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(full_st, StatusCode::CONFLICT);
+    assert_eq!(full["data"]["status"], "full");
+}
+
+#[tokio::test]
+async fn pause_claim_keeps_waiting_until_reopened() {
+    let (state, _dir) = state();
+    let id = create_with_pcs(state.clone(), 2).await;
+    let (st, opened) = post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(opened["data"]["claim_state"], "open");
+    let (st, first) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(first["data"]["status"], "claimed");
+    let (st, paused) = post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/pause-claim"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(paused["data"]["claim_state"], "paused");
+    let (st, waiting) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(waiting["data"]["status"], "waiting_open");
+    assert_eq!(waiting["data"]["message"], MSG_WAITING_OPEN);
+    let (st, resumed) = post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(resumed["data"]["claim_state"], "open");
+    let (st, second) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(second["data"]["status"], "claimed");
+    assert_ne!(second["data"]["device"]["id"], first["data"]["device"]["id"]);
+}

@@ -8,6 +8,7 @@ import {
   documentTitle,
   MSG_CLASSROOM_FULL,
   MSG_WAITING_OPEN,
+  MSG_NO_CLASSROOM,
   MSG_CHAT_UNREACHABLE,
   ROLE_LABEL,
   ROLE_SHELL,
@@ -28,7 +29,7 @@ import {
   sendPing,
   simSend,
 } from "./api";
-import { layoutWires, renderStage } from "./stage";
+import { layoutWires, placePeerBoxes, rememberPeerBox, renderStage } from "./stage";
 
 const app = mount();
 
@@ -51,6 +52,7 @@ function render(): void {
   app.innerHTML = htmlFor(screen);
   document.title = documentTitle(screen);
   if (screen.kind === "claimed") {
+    placePeerBoxes(app);
     layoutWires(app);
   }
 }
@@ -64,6 +66,9 @@ function htmlFor(s: Screen): string {
   }
   if (s.kind === "claimed") {
     return claimedShell(s);
+  }
+  if (s.kind === "idle") {
+    return board(s.message || MSG_NO_CLASSROOM, "wait");
   }
   return board(s.message, "idle");
 }
@@ -104,12 +109,20 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         ${stage.html}
         ${renderWorkbench(s, { chatInStage: isPc })}
       </div>
+      ${switchNotice(s)}
       <footer class="hud-foot">
         ${brandLockup()}
         <p>在实验中遇见更好的自己。</p>
       </footer>
     </main>
   `;
+}
+
+function switchNotice(s: Extract<Screen, { kind: "claimed" }>): string {
+  if (s.device.kind !== "switch" || !s.notice || s.notice === "端口不正确") {
+    return "";
+  }
+  return `<p class="toast-notice" role="status">${escapeHtml(s.notice)}</p>`;
 }
 
 function statusAside(s: Extract<Screen, { kind: "claimed" }>): string {
@@ -140,15 +153,38 @@ function escapeHtml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
+let noticeTimer: number | null = null;
+
+function armNoticeTimer(next: Screen): void {
+  if (noticeTimer !== null) {
+    window.clearTimeout(noticeTimer);
+    noticeTimer = null;
+  }
+  if (next.kind !== "claimed" || !next.notice || next.notice === "端口不正确") {
+    return;
+  }
+  const token = next.notice;
+  noticeTimer = window.setTimeout(() => {
+    noticeTimer = null;
+    if (screen.kind === "claimed" && screen.notice === token) {
+      setScreen({ ...screen, notice: "" });
+    }
+  }, 3200);
+}
+
 function setScreen(next: Screen): void {
   const needPeers = next.kind === "claimed" && (screen.kind !== "claimed" || peers.length === 0);
   screen = next;
   persistScreen(next);
+  armNoticeTimer(next);
   render();
   if (next.kind === "waiting_open" || next.kind === "claimed") {
     openSocket(next.connectionId);
   } else {
     closeSocket();
+  }
+  if (next.kind === "idle" || next.kind === "error" || next.kind === "full") {
+    scheduleJoinRetry();
   }
   if (needPeers && next.kind === "claimed") {
     void refreshPeers(next.connectionId);
@@ -216,6 +252,25 @@ function openSocket(connectionId: string): void {
   };
 }
 
+function scheduleJoinRetry(): void {
+  if (reconnectTimer !== null) {
+    return;
+  }
+  reconnectTimer = window.setTimeout(async () => {
+    reconnectTimer = null;
+    if (screen.kind !== "idle" && screen.kind !== "error" && screen.kind !== "full") {
+      return;
+    }
+    try {
+      const fromUrl = currentStudentClient().connectionId;
+      const next = await joinClassroom(fromUrl || null);
+      setScreen(next);
+    } catch {
+      scheduleJoinRetry();
+    }
+  }, 1500);
+}
+
 function scheduleReconnect(connectionId: string): void {
   if (reconnectTimer !== null) {
     return;
@@ -231,13 +286,44 @@ function scheduleReconnect(connectionId: string): void {
   }, 1000);
 }
 
+let bootStarted = false;
+
+function pageIsActive(): boolean {
+  const doc = document as Document & { prerendering?: boolean };
+  return doc.visibilityState === "visible" && !doc.prerendering;
+}
+
+function waitUntilActive(): Promise<void> {
+  if (pageIsActive()) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (!pageIsActive()) {
+        return;
+      }
+      document.removeEventListener("visibilitychange", tick);
+      document.removeEventListener("prerenderingchange", tick);
+      resolve();
+    };
+    document.addEventListener("visibilitychange", tick);
+    document.addEventListener("prerenderingchange", tick);
+  });
+}
+
 async function boot(): Promise<void> {
+  if (bootStarted) {
+    return;
+  }
+  bootStarted = true;
   render();
+  await waitUntilActive();
   try {
     const fromUrl = currentStudentClient().connectionId;
     const next = await joinClassroom(fromUrl || loadConnectionId());
     setScreen(next);
   } catch {
+    bootStarted = false;
     setScreen({ kind: "error", message: "无法连接教师机" });
   }
 }
@@ -398,8 +484,61 @@ app.addEventListener("submit", (ev) => {
   }
 });
 
+let drag: { portId: string; dx: number; dy: number } | null = null;
+
+app.addEventListener("pointerdown", (ev) => {
+  const box = (ev.target as HTMLElement).closest<HTMLElement>(".peer-box");
+  const stage = app.querySelector<HTMLElement>(".stage");
+  if (!box?.dataset.port || !stage || stage.dataset.kind !== "switch") {
+    return;
+  }
+  ev.preventDefault();
+  const br = box.getBoundingClientRect();
+  drag = {
+    portId: box.dataset.port,
+    dx: ev.clientX - br.left,
+    dy: ev.clientY - br.top,
+  };
+  box.classList.add("dragging");
+  box.setPointerCapture(ev.pointerId);
+});
+
+app.addEventListener("pointermove", (ev) => {
+  if (!drag) {
+    return;
+  }
+  const stage = app.querySelector<HTMLElement>(".stage");
+  const box = app.querySelector<HTMLElement>(`.peer-box[data-port="${cssSel(drag.portId)}"]`);
+  if (!stage || !box) {
+    return;
+  }
+  const sr = stage.getBoundingClientRect();
+  const left = ev.clientX - sr.left - drag.dx;
+  const top = ev.clientY - sr.top - drag.dy;
+  box.style.left = `${left}px`;
+  box.style.top = `${top}px`;
+  rememberPeerBox(drag.portId, left, top);
+  layoutWires(app);
+});
+
+function endDrag(): void {
+  if (!drag) {
+    return;
+  }
+  app.querySelector(".peer-box.dragging")?.classList.remove("dragging");
+  drag = null;
+}
+
+app.addEventListener("pointerup", endDrag);
+app.addEventListener("pointercancel", endDrag);
+
+function cssSel(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
 window.addEventListener("resize", () => {
   if (screen.kind === "claimed") {
+    placePeerBoxes(app);
     layoutWires(app);
   }
 });
