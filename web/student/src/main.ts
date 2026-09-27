@@ -54,6 +54,7 @@ function render(): void {
   if (screen.kind === "claimed") {
     placePeerBoxes(app);
     layoutWires(app);
+    placeForwardDlg(app);
   }
 }
 
@@ -94,6 +95,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
     selectedPortId,
     withoutTapPorts(peers.filter((id) => !id.startsWith(`${s.device.id}/`))),
     s.tapAttach,
+    selectedPortId && s.notice && s.notice !== "端口不正确" ? s.notice : "",
   );
   return `
     <main class="shell" data-kind="${shell}">
@@ -119,7 +121,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
 }
 
 function switchNotice(s: Extract<Screen, { kind: "claimed" }>): string {
-  if (s.device.kind !== "switch" || !s.notice || s.notice === "端口不正确") {
+  if (selectedPortId || s.device.kind !== "switch" || !s.notice || s.notice === "端口不正确") {
     return "";
   }
   return `<p class="toast-notice" role="status">${escapeHtml(s.notice)}</p>`;
@@ -328,20 +330,49 @@ async function boot(): Promise<void> {
   }
 }
 
+let backdropArmed = false;
+
+app.addEventListener("input", (ev) => {
+  const el = ev.target as HTMLInputElement;
+  if (el.name !== "peer_port_id") {
+    return;
+  }
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  const next = el.value.toUpperCase();
+  if (el.value === next) {
+    return;
+  }
+  el.value = next;
+  if (start != null && end != null) {
+    el.setSelectionRange(start, end);
+  }
+});
+
 app.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement;
   const closeDlg = target.closest("[data-dlg-close]");
   const onBackdrop = target.classList.contains("dlg-backdrop");
+  const blockBackdrop = Boolean(target.closest(".forward-form") || (onBackdrop && target.querySelector(".forward-form")));
   if (closeDlg || onBackdrop) {
-    if (target.closest(".forward-form") || (onBackdrop && target.querySelector(".forward-form"))) {
+    if (blockBackdrop) {
+      backdropArmed = false;
       return;
     }
+    if (onBackdrop && !backdropArmed) {
+      return;
+    }
+    backdropArmed = false;
     selectedPortId = null;
     if (screen.kind === "claimed" && screen.chatPrompt) {
       setScreen({ ...screen, chatPrompt: false });
       return;
     }
     render();
+    return;
+  }
+  backdropArmed = false;
+  if (target.closest(".dlg")) {
     return;
   }
   if (target.closest("[data-chat-start]") && screen.kind === "claimed") {
@@ -390,7 +421,7 @@ app.addEventListener("submit", (ev) => {
   }
   const data = new FormData(form);
   const patch: { ip?: string; gateway?: string; peer_port_id?: string } = {};
-  const peer = String(data.get("peer_port_id") || "");
+  const peer = String(data.get("peer_port_id") || "").trim().toUpperCase();
   patch.peer_port_id = peer;
   const ip = String(data.get("ip") || "");
   if (ip) {
@@ -402,7 +433,9 @@ app.addEventListener("submit", (ev) => {
   }
   void putPort(screen.connectionId, screen.device.id, portId, patch)
     .then((body) => {
-      setScreen(applyWsEvent(screen, { event: "topology.updated", ...(body as object) }));
+      selectedPortId = null;
+      const next = applyWsEvent(screen, { event: "topology.updated", ...(body as object) });
+      setScreen(next.kind === "claimed" ? { ...next, notice: "" } : next);
     })
     .catch((err) => {
       setScreen(applyNotice(screen, err instanceof Error ? err.message : "保存端口失败"));
@@ -467,15 +500,7 @@ app.addEventListener("submit", (ev) => {
       return;
     }
     void forwardFrame(screen.connectionId, frameId, outPort)
-      .then((body) => {
-        const rec = body as { frame?: unknown };
-        if (rec.frame) {
-          const next = applyWsEvent(screen, { event: "frame.repack", frame: rec.frame });
-          if (next.kind === "claimed" && next.frame?.changed.length) {
-            setScreen(next);
-            return;
-          }
-        }
+      .then(() => {
         setScreen(applyWsEvent(screen, { event: "frame.departed", frame_id: frameId }));
       })
       .catch((err) => {
@@ -485,9 +510,62 @@ app.addEventListener("submit", (ev) => {
 });
 
 let drag: { portId: string; dx: number; dy: number } | null = null;
+let fwdDrag: { dx: number; dy: number } | null = null;
+let fwdPos: { left: number; top: number } | null = null;
+
+function placeForwardDlg(root: HTMLElement): void {
+  const dlg = root.querySelector<HTMLElement>(".forward-form.dlg");
+  if (!dlg || !fwdPos) {
+    return;
+  }
+  dlg.style.position = "fixed";
+  dlg.style.left = `${fwdPos.left}px`;
+  dlg.style.top = `${fwdPos.top}px`;
+  dlg.style.margin = "0";
+  dlg.style.transform = "none";
+}
+
+function clampFwd(left: number, top: number, w: number, h: number): { left: number; top: number } {
+  const pad = 8;
+  const maxL = Math.max(pad, window.innerWidth - w - pad);
+  const maxT = Math.max(pad, window.innerHeight - h - pad);
+  return {
+    left: Math.min(Math.max(left, pad), maxL),
+    top: Math.min(Math.max(top, pad), maxT),
+  };
+}
+
+function moveForwardDlg(ev: PointerEvent): void {
+  if (!fwdDrag) {
+    return;
+  }
+  const dlg = app.querySelector<HTMLElement>(".forward-form.dlg");
+  if (!dlg) {
+    return;
+  }
+  const next = clampFwd(ev.clientX - fwdDrag.dx, ev.clientY - fwdDrag.dy, dlg.offsetWidth, dlg.offsetHeight);
+  fwdPos = next;
+  dlg.style.position = "fixed";
+  dlg.style.left = `${next.left}px`;
+  dlg.style.top = `${next.top}px`;
+  dlg.style.margin = "0";
+  dlg.style.transform = "none";
+}
 
 app.addEventListener("pointerdown", (ev) => {
-  const box = (ev.target as HTMLElement).closest<HTMLElement>(".peer-box");
+  const t = ev.target as HTMLElement;
+  backdropArmed = t.classList.contains("dlg-backdrop") && !t.querySelector(".forward-form");
+  const handle = t.closest<HTMLElement>("[data-fwd-drag]");
+  const dlg = handle?.closest<HTMLElement>(".forward-form.dlg");
+  if (dlg) {
+    ev.preventDefault();
+    const br = dlg.getBoundingClientRect();
+    fwdDrag = { dx: ev.clientX - br.left, dy: ev.clientY - br.top };
+    dlg.classList.add("dragging");
+    dlg.setPointerCapture(ev.pointerId);
+    return;
+  }
+  const box = t.closest<HTMLElement>(".peer-box");
   const stage = app.querySelector<HTMLElement>(".stage");
   if (!box?.dataset.port || !stage || stage.dataset.kind !== "switch") {
     return;
@@ -504,6 +582,10 @@ app.addEventListener("pointerdown", (ev) => {
 });
 
 app.addEventListener("pointermove", (ev) => {
+  if (fwdDrag) {
+    moveForwardDlg(ev);
+    return;
+  }
   if (!drag) {
     return;
   }
@@ -522,6 +604,10 @@ app.addEventListener("pointermove", (ev) => {
 });
 
 function endDrag(): void {
+  if (fwdDrag) {
+    app.querySelector(".forward-form.dlg")?.classList.remove("dragging");
+    fwdDrag = null;
+  }
   if (!drag) {
     return;
   }

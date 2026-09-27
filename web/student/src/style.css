@@ -314,24 +314,51 @@ main {
   padding: 6px 8px;
   border-bottom: 1px solid rgba(34, 211, 238, 0.16);
 }
-.chat-log,
-.tap-log {
+.chat-log {
   list-style: none;
   padding: 0;
   margin: 0 0 12px;
 }
-.chat-log li,
-.tap-log li {
+.chat-log li {
   padding: 6px 0;
   border-bottom: 1px solid rgba(34, 211, 238, 0.12);
 }
+.tap-log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.tap-log th,
+.tap-log td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.16);
+  vertical-align: top;
+  word-break: break-word;
+}
+.tap-log th {
+  color: var(--muted);
+  font-weight: 600;
+}
+.tap-data {
+  color: var(--text);
+}
+.tap-empty {
+  color: var(--muted);
+}
+.shell[data-kind="tap"] .bench {
+  overflow: auto;
+}
 .chat-form,
-.ping-form,
-.forward-form {
+.ping-form {
   display: grid;
   gap: 8px;
   max-width: 420px;
   margin-bottom: 12px;
+}
+.forward-form {
+  display: grid;
+  gap: 8px;
 }
 .bench input {
   background: #0b1a2c;
@@ -1034,6 +1061,10 @@ main {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+.dlg-err {
+  color: var(--fail);
+  margin: 8px 0 0;
+}
 .dlg-actions {
   display: flex;
   justify-content: flex-end;
@@ -1051,6 +1082,84 @@ main {
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
   gap: 8px;
   margin: 10px 0;
+}
+.forward-form.dlg {
+  width: min(860px, 100%);
+  max-width: none;
+}
+.dlg-backdrop:has(.forward-form) {
+  background: rgba(2, 8, 16, 0.28);
+}
+.forward-form .dlg-hd[data-fwd-drag] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.forward-form.dlg.dragging .dlg-hd[data-fwd-drag] {
+  cursor: grabbing;
+}
+.fwd-body {
+  display: grid;
+  grid-template-columns: minmax(168px, 230px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.fwd-queue {
+  border-right: 1px solid var(--line);
+  padding-right: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+.fwd-queue h4 {
+  margin: 0 0 10px;
+  color: var(--cyan);
+  font-size: 0.92rem;
+}
+.fwd-queue ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.fwd-queue li {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(7, 17, 29, 0.55);
+}
+.fwd-queue li[data-current="true"] {
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.18);
+}
+.fwd-q-route,
+.fwd-q-data {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.fwd-q-route {
+  color: var(--text);
+}
+.fwd-q-data {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.fwd-q-empty {
+  color: var(--muted);
+}
+.dlg input[name="peer_port_id"] {
+  text-transform: uppercase;
+}
+@media (max-width: 720px) {
+  .fwd-body {
+    grid-template-columns: 1fr;
+  }
+  .fwd-queue {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding-right: 0;
+    padding-bottom: 12px;
+  }
 }
 .dlg-frame {
   width: 100%;

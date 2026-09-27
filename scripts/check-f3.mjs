@@ -145,6 +145,37 @@ const holding = applyWsEvent(
 assert.equal(holding.kind, "claimed");
 assert.match(renderWorkbench(holding), /模拟选口/);
 assert.match(renderWorkbench(holding), /S1\/02/);
+assert.match(renderWorkbench(holding), /待转发帧/);
+assert.equal(holding.frameQueue.length, 0);
+
+const queued = applyWsEvent(holding, {
+  event: "frame.arrived",
+  frame: {
+    frame_id: "F2b",
+    dst_mac: "aa:bb:cc:dd:ee:03",
+    src_mac: "aa:bb:cc:dd:ee:01",
+    src_ip: "192.168.1.11",
+    dst_ip: "192.168.2.11",
+    payload: "第二帧",
+    at_device_id: "S1",
+    status: "inflight",
+  },
+});
+assert.equal(queued.kind, "claimed");
+assert.equal(queued.frame?.frame_id, "F2");
+assert.equal(queued.frameQueue.length, 1);
+assert.equal(queued.frameQueue[0].frame_id, "F2b");
+assert.match(renderWorkbench(queued), /第二帧/);
+
+const advanced = applyWsEvent(queued, { event: "frame.departed", frame_id: "F2" });
+assert.equal(advanced.kind, "claimed");
+assert.equal(advanced.frame?.frame_id, "F2b");
+assert.equal(advanced.frameQueue.length, 0);
+
+const drained = applyWsEvent(advanced, { event: "frame.departed", frame_id: "F2b" });
+assert.equal(drained.kind, "claimed");
+assert.equal(drained.frame, null);
+assert.equal(renderWorkbench(drained).includes("模拟选口"), false);
 
 const wrong = applyNotice(holding, MSG_WRONG_PORT);
 assert.equal(wrong.kind, "claimed");
@@ -240,6 +271,10 @@ assert.equal(tap.kind, "claimed");
 const tapHtml = renderWorkbench(tap);
 assert.match(tapHtml, /过路帧/);
 assert.match(tapHtml, /过路/);
+assert.match(tapHtml, /<th>时间<\/th>/);
+assert.match(tapHtml, /<th>源<\/th>/);
+assert.match(tapHtml, /<th>目的地<\/th>/);
+assert.match(tapHtml, /<th>数据<\/th>/);
 assert.equal(tapHtml.includes("port-editor"), false);
 
 console.log("F3 checks passed");

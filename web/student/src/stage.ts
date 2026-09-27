@@ -13,6 +13,7 @@ export function renderStage(
   selectedPortId: string | null,
   peers: string[],
   tapAttach: TapAttachView[] = [],
+  notice = "",
 ): { html: string; model: StageModel } {
   const model = buildStage(device, links, tapAttach);
   const selected = model.ports.find((p) => p.portId === selectedPortId) ?? null;
@@ -25,7 +26,7 @@ export function renderStage(
       }
       <svg class="wires" aria-hidden="true"></svg>
     </section>
-    ${editorMarkup(model.kind, selected, peers)}
+    ${editorMarkup(model.kind, selected, peers, notice)}
   `;
   return { html, model };
 }
@@ -90,7 +91,7 @@ function boxMarkup(port: StagePort, row = "top"): string {
   `;
 }
 
-function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[]): string {
+function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[], notice = ""): string {
   if (!port) {
     return `<p class="hint">点击端口填写对端${kind === "pc" || kind === "router" ? "与地址" : ""}。</p>`;
   }
@@ -114,9 +115,10 @@ function editorMarkup(kind: DeviceKind, port: StagePort | null, peers: string[])
         <header class="dlg-hd"><h3>填写对端端口</h3><button type="button" class="dlg-x" data-dlg-close>×</button></header>
         <p class="dlg-sub">端口 ${escapeHtml(port.portId)} · 手输对端端口编号</p>
         <label>本口 <input value="${escapeAttr(port.portId)}" readonly /></label>
-        <label>对端端口编号 <input name="peer_port_id" value="${escapeAttr(port.peerPortId || "")}" placeholder="例如 S1/01" /></label>
+        <label>对端端口编号 <input name="peer_port_id" value="${escapeAttr(port.peerPortId || "")}" placeholder="例如 S1/01" autocapitalize="characters" spellcheck="false" autocomplete="off" /></label>
         <p class="hint">格式为设备号/端口号，如 PC1/01、R1/02。两端互指后才会物理连通。</p>
         ${ip}
+        ${notice ? `<p class="notice dlg-err" role="alert">${escapeHtml(notice)}</p>` : ""}
         <div class="dlg-actions">
           <button type="button" data-dlg-close>取消</button>
           <button type="submit">保存</button>

@@ -202,6 +202,8 @@ assert.ok(studentApi.includes("/api/v1/ports/peers"));
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.ok(studentMain.includes("renderStage"));
 assert.ok(studentMain.includes("putPort"));
+assert.ok(studentMain.includes("toUpperCase"));
+assert.ok(studentMain.includes("selectedPortId = null"));
 
 assert.ok(studentStage.includes('name="peer_port_id"'));
 assert.equal(studentStage.includes("<select name=\"peer_port_id\">"), false);

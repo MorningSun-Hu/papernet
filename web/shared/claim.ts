@@ -74,6 +74,7 @@ export type SimFrameView = {
   status: string;
   changed: string[];
   ingress: { dst_mac: string; src_mac: string } | null;
+  at: number;
 };
 
 export type ClaimedScreen = {
@@ -88,6 +89,7 @@ export type ClaimedScreen = {
   pingDetail: string;
   notice: string;
   frame: SimFrameView | null;
+  frameQueue: SimFrameView[];
   tapLog: SimFrameView[];
   tapAttach: TapAttachView[];
   chatPeerIp: string;
@@ -337,7 +339,15 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
     const tapAttach =
       root.tap_attach != null ? parseTapAttach(root.tap_attach) : screen.tapAttach;
     if (mode === "normal" || mode === "simulation") {
-      return { ...screen, mode, notice: "", tapAttach };
+      const enteringSim = mode === "simulation" && screen.mode !== "simulation";
+      return {
+        ...screen,
+        mode,
+        notice: "",
+        tapAttach,
+        ...(enteringSim ? { tapLog: [], frame: null, frameQueue: [] } : {}),
+        ...(mode === "normal" ? { frame: null, frameQueue: [] } : {}),
+      };
     }
     if (root.tap_attach != null) {
       return { ...screen, tapAttach };
@@ -404,27 +414,58 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
         chatLog: dup ? screen.chatLog : [...screen.chatLog, line],
       };
     }
-    return { ...screen, frame: nextFrame, notice: "" };
+    if (event === "frame.repack") {
+      return replaceQueuedFrame(screen, nextFrame);
+    }
+    return enqueueFrame(screen, nextFrame);
   }
   if (event === "frame.departed" && screen.kind === "claimed") {
-    const id = str(root.frame_id);
-    if (screen.frame && screen.frame.frame_id === id && screen.frame.changed.length) {
-      return screen;
-    }
-    return {
-      ...screen,
-      frame: screen.frame && screen.frame.frame_id === id ? null : screen.frame,
-      notice: "",
-    };
+    return dequeueFrame(screen, str(root.frame_id));
   }
   if (event === "frame.logged" && screen.kind === "claimed") {
     const frame = parseFrame(root.frame);
+    const stamped = frame ? { ...frame, at: frame.at || num(root.at) || Date.now() } : null;
     return {
       ...screen,
-      tapLog: frame ? [...screen.tapLog, frame] : screen.tapLog,
+      tapLog: stamped ? [...screen.tapLog, stamped] : screen.tapLog,
     };
   }
   return screen;
+}
+
+function enqueueFrame(screen: ClaimedScreen, frame: SimFrameView): ClaimedScreen {
+  const hop = screen.device.kind === "switch" || screen.device.kind === "router";
+  if (!hop || !screen.frame || screen.frame.frame_id === frame.frame_id) {
+    return { ...screen, frame, notice: "" };
+  }
+  if (screen.frameQueue.some((item) => item.frame_id === frame.frame_id)) {
+    return {
+      ...screen,
+      frameQueue: screen.frameQueue.map((item) => (item.frame_id === frame.frame_id ? frame : item)),
+      notice: "",
+    };
+  }
+  return { ...screen, frameQueue: [...screen.frameQueue, frame], notice: "" };
+}
+
+function replaceQueuedFrame(screen: ClaimedScreen, frame: SimFrameView): ClaimedScreen {
+  if (screen.frame?.frame_id === frame.frame_id) {
+    return { ...screen, frame, notice: "" };
+  }
+  return {
+    ...screen,
+    frameQueue: screen.frameQueue.map((item) => (item.frame_id === frame.frame_id ? frame : item)),
+    notice: "",
+  };
+}
+
+function dequeueFrame(screen: ClaimedScreen, frameId: string): ClaimedScreen {
+  const rest = screen.frameQueue.filter((item) => item.frame_id !== frameId);
+  if (screen.frame?.frame_id === frameId) {
+    const [next, ...tail] = rest;
+    return { ...screen, frame: next ?? null, frameQueue: tail, notice: "" };
+  }
+  return { ...screen, frameQueue: rest };
 }
 
 export function blankClaimed(
@@ -444,6 +485,7 @@ export function blankClaimed(
     pingDetail: "",
     notice: "",
     frame: null,
+    frameQueue: [],
     tapLog: [],
     tapAttach: [],
     chatPeerIp: "",
@@ -648,6 +690,7 @@ function parseFrame(value: unknown): SimFrameView | null {
       ? rec.changed.filter((item): item is string => typeof item === "string")
       : [],
     ingress: parseIngress(rec.ingress),
+    at: num(rec.at),
   };
 }
 
@@ -713,6 +756,19 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function num(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+  return 0;
 }
 export const MSG_CHAT_UNREACHABLE = "消息发送失败，对方 IP 不可达";
 export const MSG_PORT_BUSY = "端口已被占用";

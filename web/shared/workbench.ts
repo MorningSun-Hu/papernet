@@ -104,16 +104,26 @@ function routerBench(screen: ClaimedScreen): string {
 
 function tapBench(screen: ClaimedScreen): string {
   const frames = screen.tapLog;
+  const rows = frames.length
+    ? frames
+        .map(
+          (frame) =>
+            `<tr>
+               <td>${escapeHtml(formatStamp(frame.at))}</td>
+               <td>${escapeHtml(frame.src_ip || frame.src_mac)}</td>
+               <td>${escapeHtml(frame.dst_ip || frame.dst_mac)}</td>
+               <td class="tap-data">${escapeHtml(payloadSummary(frame.payload))}</td>
+             </tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="4" class="tap-empty">暂无过路帧</td></tr>`;
   return `
     <section class="bench" data-role="tap">
       <h2>过路帧</h2>
-      <ul class="tap-log">
-        ${
-          frames.length
-            ? frames.map((frame) => `<li>${frameStrip(frame)}</li>`).join("")
-            : "<li>暂无过路帧</li>"
-        }
-      </ul>
+      <table class="tap-log">
+        <thead><tr><th>时间</th><th>源</th><th>目的地</th><th>数据</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
     </section>
   `;
 }
@@ -204,8 +214,28 @@ function forwardForm(screen: ClaimedScreen): string {
   const ports = screen.device.ports;
   const kind = screen.device.kind;
   const frame = screen.frame;
+  const pending = frame ? [frame, ...screen.frameQueue] : screen.frameQueue;
   const byMac = kind === "switch";
   const hint = byMac ? "根据目的 MAC 选择转发端口" : "根据目的 IP 选择转发端口";
+  const queue = `
+    <aside class="fwd-queue" aria-label="待转发帧">
+      <h4>待转发帧</h4>
+      <ol>
+        ${
+          pending.length
+            ? pending
+                .map(
+                  (item, i) =>
+                    `<li data-current="${i === 0}" data-frame="${escapeAttr(item.frame_id)}">
+                       <p class="fwd-q-route">${escapeHtml(item.src_ip)} → ${escapeHtml(item.dst_ip)}</p>
+                       <p class="fwd-q-data">${escapeHtml(payloadSummary(item.payload))}</p>
+                     </li>`,
+                )
+                .join("")
+            : `<li class="fwd-q-empty">暂无</li>`
+        }
+      </ol>
+    </aside>`;
   const frameRows = frame
     ? `<table class="dlg-frame">
          <tr><th>目的 MAC</th><td>${escapeHtml(frame.dst_mac)}</td></tr>
@@ -218,23 +248,28 @@ function forwardForm(screen: ClaimedScreen): string {
   return `
     <div class="dlg-backdrop" data-open="true">
       <form class="forward-form dlg">
-        <header class="dlg-hd">
+        <header class="dlg-hd" data-fwd-drag>
           <h3>转发数据帧</h3>
           <span class="mode-pill">模拟选口 · ${escapeHtml(screen.device.id)}</span>
         </header>
-        <p class="dlg-sub">${hint}</p>
-        ${frameRows}
-        <p>选择出端口</p>
-        <div class="fwd-grid">
-          ${ports
-            .map(
-              (port) =>
-                `<button type="submit" class="fwd-port" name="out_port_id" value="${escapeAttr(port.id)}">${escapeHtml(port.id)}</button>`,
-            )
-            .join("")}
+        <div class="fwd-body">
+          ${queue}
+          <div class="fwd-main">
+            <p class="dlg-sub">${hint}</p>
+            ${frameRows}
+            <p>选择出端口</p>
+            <div class="fwd-grid">
+              ${ports
+                .map(
+                  (port) =>
+                    `<button type="submit" class="fwd-port" name="out_port_id" value="${escapeAttr(port.id)}">${escapeHtml(port.id)}</button>`,
+                )
+                .join("")}
+            </div>
+            ${screen.notice === "端口不正确" ? `<p class="notice wrong-port">端口不正确</p>` : ""}
+            <p class="hint">选错口时提示「端口不正确」；帧留在本机</p>
+          </div>
         </div>
-        ${screen.notice === "端口不正确" ? `<p class="notice wrong-port">端口不正确</p>` : ""}
-        <p class="hint">选错口时提示「端口不正确」；帧留在本机</p>
       </form>
     </div>
   `;
@@ -347,4 +382,21 @@ function escapeHtml(text: string): string {
 
 function escapeAttr(text: string): string {
   return escapeHtml(text);
+}
+
+function payloadSummary(text: string): string {
+  const t = text.trim();
+  return t.length <= 48 ? t : `${t.slice(0, 48)}...`;
+}
+
+function formatStamp(at: number): string {
+  if (!at) {
+    return "--:--:--";
+  }
+  const ms = at < 1e12 ? at * 1000 : at;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) {
+    return "--:--:--";
+  }
+  return d.toLocaleTimeString("zh-CN", { hour12: false });
 }
