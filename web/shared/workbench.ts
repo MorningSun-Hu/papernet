@@ -24,6 +24,42 @@ export function renderPcChat(screen: ClaimedScreen): string {
   return chatPanel(screen);
 }
 
+export type LinuxPing = {
+  header: string;
+  replies: string[];
+  stats: string[];
+};
+
+export function linuxPing(toIp: string, reachable: boolean): LinuxPing {
+  const header = `PING ${toIp} (${toIp}) 56(84) bytes of data.`;
+  if (!reachable) {
+    return {
+      header,
+      replies: Array.from({ length: 5 }, (_, i) => `From ${toIp} icmp_seq=${i + 1} Destination Host Unreachable`),
+      stats: [
+        `--- ${toIp} ping statistics ---`,
+        "5 packets transmitted, 0 received, 100% packet loss, time 4004ms",
+      ],
+    };
+  }
+  const times = [0.387, 0.412, 0.359, 0.441, 0.398];
+  const min = Math.min(...times);
+  const max = Math.max(...times);
+  const avg = times.reduce((sum, n) => sum + n, 0) / times.length;
+  const mdev = Math.sqrt(times.reduce((sum, n) => sum + (n - avg) ** 2, 0) / times.length);
+  return {
+    header,
+    replies: times.map(
+      (ms, i) => `64 bytes from ${toIp}: icmp_seq=${i + 1} ttl=64 time=${ms.toFixed(3)} ms`,
+    ),
+    stats: [
+      `--- ${toIp} ping statistics ---`,
+      "5 packets transmitted, 5 received, 0% packet loss, time 4004ms",
+      `rtt min/avg/max/mdev = ${min.toFixed(3)}/${avg.toFixed(3)}/${max.toFixed(3)}/${mdev.toFixed(3)} ms`,
+    ],
+  };
+}
+
 function pcBench(screen: ClaimedScreen, chatInStage: boolean): string {
   const sim = screen.mode === "simulation";
   return `
@@ -94,7 +130,6 @@ function routerBench(screen: ClaimedScreen): string {
   return `
     <section class="bench" data-role="router">
       ${arpTable(screen)}
-      ${screen.mode === "normal" ? pingForm(screen.pingDetail) : ""}
       ${frameCard(screen.frame, "router")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
       ${notice(screen.notice)}
@@ -197,16 +232,6 @@ function chatPanel(screen: ClaimedScreen): string {
       <ol class="chat-log wx-log">${lines}</ol>
       ${composer}
     </div>
-  `;
-}
-
-function pingForm(detail: string): string {
-  return `
-    <form class="ping-form">
-      <label>ping 目标 IP <input name="to_ip" required /></label>
-      <button type="submit">ping</button>
-      ${detail ? `<p class="ping-result">${escapeHtml(detail)}</p>` : ""}
-    </form>
   `;
 }
 

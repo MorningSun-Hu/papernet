@@ -15,7 +15,7 @@ import {
   wsPath,
   type Screen,
 } from "@shared/claim";
-import { renderPcChat, renderWorkbench, withoutTapPorts } from "@shared/workbench";
+import { linuxPing, renderPcChat, renderWorkbench, withoutTapPorts } from "@shared/workbench";
 import { brandLockup, hudClock, studentNav } from "@shared/brand";
 import {
   ApiError,
@@ -47,6 +47,11 @@ let heartbeat: number | null = null;
 let reconnectTimer: number | null = null;
 let selectedPortId: string | null = null;
 let peers: string[] = [];
+let pingOpen = false;
+let pingIp = "";
+let pingLines: string[] = [];
+let pingRunning = false;
+let pingTimer: number | null = null;
 
 type PortDraft = {
   portId: string;
@@ -119,6 +124,10 @@ function render(): void {
     placeForwardDlg(app);
   }
   restorePortDraft(draft);
+  const pingOut = app.querySelector(".ping-out");
+  if (pingOut) {
+    pingOut.scrollTop = pingOut.scrollHeight;
+  }
 }
 
 function htmlFor(s: Screen): string {
@@ -174,6 +183,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         ${stage.html}
         ${renderWorkbench(s, { chatInStage: isPc })}
       </div>
+      ${routerPingDialog(s)}
       ${switchNotice(s)}
       <footer class="hud-foot">
         ${brandLockup()}
@@ -206,7 +216,71 @@ function statusAside(s: Extract<Screen, { kind: "claimed" }>): string {
         <div><dt>端口总数</dt><dd>${s.device.ports.length}</dd></div>
         <div><dt>UP 端口</dt><dd>${up}</dd></div>
       </dl>
+      ${
+        s.device.kind === "router"
+          ? `<button type="button" class="status-ping" data-router-ping>ping</button>`
+          : ""
+      }
     </aside>
+  `;
+}
+
+function closePing(): void {
+  if (pingTimer != null) {
+    window.clearTimeout(pingTimer);
+    pingTimer = null;
+  }
+  pingOpen = false;
+  pingRunning = false;
+}
+
+function playPing(toIp: string, reachable: boolean): void {
+  if (pingTimer != null) {
+    window.clearTimeout(pingTimer);
+    pingTimer = null;
+  }
+  const script = linuxPing(toIp, reachable);
+  pingLines = [script.header, ""];
+  pingRunning = true;
+  render();
+  let i = 0;
+  const step = () => {
+    pingTimer = null;
+    if (!pingOpen) {
+      pingRunning = false;
+      return;
+    }
+    if (i < script.replies.length) {
+      pingLines = [...pingLines, script.replies[i]];
+      i += 1;
+      pingTimer = window.setTimeout(step, 1000);
+      render();
+      return;
+    }
+    pingLines = [...pingLines, "", ...script.stats];
+    pingRunning = false;
+    render();
+  };
+  pingTimer = window.setTimeout(step, 1000);
+}
+
+function routerPingDialog(s: Extract<Screen, { kind: "claimed" }>): string {
+  if (!pingOpen || s.device.kind !== "router") {
+    return "";
+  }
+  const out = pingLines.length ? `<pre class="ping-out">${escapeHtml(pingLines.join("\n"))}</pre>` : "";
+  return `
+    <div class="dlg-backdrop" data-open="true">
+      <form class="dlg router-ping-form">
+        <header class="dlg-hd"><h3>ping</h3><button type="button" class="dlg-x" data-dlg-close>×</button></header>
+        <p class="dlg-sub">填写目标 IP，发送 5 个探测包</p>
+        <label>目标 IP <input name="to_ip" value="${escapeHtml(pingIp)}" required ${pingRunning ? "readonly" : ""} /></label>
+        <div class="dlg-actions">
+          <button type="submit" class="status-ping" ${pingRunning ? "disabled" : ""}>ping</button>
+        </div>
+        ${out}
+      </form>
+    </div>
   `;
 }
 
@@ -414,6 +488,14 @@ app.addEventListener(
   true,
 );
 
+app.addEventListener("input", (ev) => {
+  const el = ev.target;
+  if (!(el instanceof HTMLInputElement) || el.name !== "to_ip" || !el.closest(".router-ping-form")) {
+    return;
+  }
+  pingIp = el.value;
+});
+
 app.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement;
   const closeDlg = target.closest("[data-dlg-close]");
@@ -429,6 +511,11 @@ app.addEventListener("click", (ev) => {
     }
     backdropArmed = false;
     selectedPortId = null;
+    if (pingOpen) {
+      closePing();
+      render();
+      return;
+    }
     if (screen.kind === "claimed" && screen.chatPrompt) {
       setScreen({ ...screen, chatPrompt: false });
       return;
@@ -442,6 +529,13 @@ app.addEventListener("click", (ev) => {
   }
   if (target.closest("[data-chat-start]") && screen.kind === "claimed") {
     setScreen({ ...screen, chatPrompt: true, chatError: "" });
+    return;
+  }
+  if (target.closest("[data-router-ping]") && screen.kind === "claimed" && screen.device.kind === "router") {
+    pingOpen = true;
+    pingRunning = false;
+    pingLines = [];
+    render();
     return;
   }
   if (target.closest("[data-chat-ping]") && screen.kind === "claimed") {
@@ -543,16 +637,28 @@ app.addEventListener("submit", (ev) => {
     setScreen({ ...screen, chatPeerIp: ip, chatPrompt: false, chatError: "" });
     return;
   }
-  if (form.classList.contains("ping-form")) {
+  if (form.classList.contains("router-ping-form")) {
     ev.preventDefault();
-    const data = new FormData(form);
-    const toIp = String(data.get("to_ip") || "");
+    const toIp = String(new FormData(form).get("to_ip") || "").trim();
+    pingIp = toIp;
+    if (!toIp || pingRunning) {
+      return;
+    }
+    pingRunning = true;
+    render();
     void sendPing(screen.connectionId, toIp)
-      .then((res) => {
-        setScreen(applyPingDetail(screen, res.detail));
+      .then(() => {
+        playPing(toIp, true);
       })
       .catch((err) => {
-        setScreen(applyNotice(screen, err instanceof ApiError ? err.message : "ping 失败"));
+        const unreachable = err instanceof ApiError && err.code === "UNREACHABLE";
+        if (unreachable) {
+          playPing(toIp, false);
+          return;
+        }
+        pingRunning = false;
+        pingLines = [err instanceof ApiError ? err.message : "ping 失败"];
+        render();
       });
     return;
   }

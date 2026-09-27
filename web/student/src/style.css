@@ -768,6 +768,9 @@ main {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .status-aside h2 {
   margin: 0 0 8px;
@@ -789,6 +792,39 @@ main {
 }
 .status-aside dd {
   margin: 0;
+}
+
+.status-ping {
+  margin-top: auto;
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.status-ping:hover {
+  background: rgba(34, 211, 238, 0.14);
+}
+
+.router-ping-form .ping-out {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  min-height: 9em;
+  max-height: 16em;
+  overflow: auto;
+  background: #061018;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #bbf7d0;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .shell .stage {
   grid-column: 2;
@@ -1076,6 +1112,16 @@ main {
   color: #07111d;
   border: 0;
   font-weight: 650;
+}
+
+.router-ping-form .dlg-actions button.status-ping[type="submit"] {
+  margin-top: 0;
+  background: transparent;
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  font: inherit;
+  font-weight: 400;
+  padding: 6px 14px;
 }
 .fwd-grid {
   display: grid;

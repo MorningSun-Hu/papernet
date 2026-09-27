@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   MSG_WRONG_PORT,
   MSG_CHAT_UNREACHABLE,
@@ -10,7 +13,7 @@ import {
   blankClaimed,
   screenFromHttp,
 } from "../web/shared/claim.ts";
-import { renderPcChat, renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
+import { linuxPing, renderPcChat, renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
 
 assert.equal(MSG_WRONG_PORT, "端口不正确");
 assert.equal(MSG_PORT_BUSY, "端口已被占用");
@@ -200,7 +203,8 @@ assert.equal(router.kind, "claimed");
 const routerHtml = renderWorkbench(router);
 assert.match(routerHtml, /ARP 表/);
 assert.match(routerHtml, /192\.168\.1\.10/);
-assert.match(routerHtml, /ping/);
+assert.equal(routerHtml.includes("ping-form"), false);
+assert.equal(routerHtml.includes("data-router-ping"), false);
 
 const routerHold = applyWsEvent(
   { ...router, mode: "simulation" },
@@ -276,5 +280,26 @@ assert.match(tapHtml, /<th>源<\/th>/);
 assert.match(tapHtml, /<th>目的地<\/th>/);
 assert.match(tapHtml, /<th>数据<\/th>/);
 assert.equal(tapHtml.includes("port-editor"), false);
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
+assert.match(studentMain, /data-router-ping/);
+assert.match(studentMain, /router-ping-form/);
+assert.match(studentMain, /linuxPing/);
+assert.equal(studentMain.includes("classList.contains(\"ping-form\")"), false);
+
+const okPing = linuxPing("192.168.1.10", true);
+assert.match(okPing.header, /PING 192\.168\.1\.10 \(192\.168\.1\.10\) 56\(84\) bytes of data\./);
+assert.equal(okPing.replies.length, 5);
+assert.match(okPing.replies[0], /64 bytes from 192\.168\.1\.10: icmp_seq=1 ttl=64 time=/);
+assert.match(okPing.replies[4], /icmp_seq=5/);
+assert.match(okPing.stats[0], /--- 192\.168\.1\.10 ping statistics ---/);
+assert.match(okPing.stats[1], /5 packets transmitted, 5 received, 0% packet loss/);
+assert.match(okPing.stats[2], /rtt min\/avg\/max\/mdev/);
+
+const badPing = linuxPing("10.0.0.9", false);
+assert.equal(badPing.replies.length, 5);
+assert.match(badPing.replies[0], /Destination Host Unreachable/);
+assert.match(badPing.stats[1], /5 packets transmitted, 0 received, 100% packet loss/);
 
 console.log("F3 checks passed");
