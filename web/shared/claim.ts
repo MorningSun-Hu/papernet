@@ -80,6 +80,7 @@ export type SimFrameView = {
 export type ClaimedScreen = {
   kind: "claimed";
   connectionId: string;
+  classroomId?: string;
   device: Device;
   links: LinkView[];
   mode: "normal" | "simulation";
@@ -99,7 +100,7 @@ export type ClaimedScreen = {
 
 export type Screen =
   | { kind: "idle"; message: string }
-  | { kind: "waiting_open"; message: string; connectionId: string }
+  | { kind: "waiting_open"; message: string; connectionId: string; classroomId?: string }
   | ClaimedScreen
   | { kind: "full"; message: string }
   | { kind: "error"; message: string };
@@ -249,6 +250,7 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     return {
       kind: "waiting_open",
       connectionId,
+      classroomId: str(data.classroom_id) || undefined,
       message: str(data.message) || MSG_WAITING_OPEN,
     };
   }
@@ -259,9 +261,18 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
     if (!connectionId || !device) {
       return { kind: "error", message: "领取角色失败" };
     }
+    const frames = parseFrameList(data.frames);
     return {
-      ...blankClaimed(connectionId, device),
+      ...blankClaimed(connectionId, device, parseLinks(data.links)),
+      classroomId: str(data.classroom_id) || undefined,
+      mode: str(data.mode) === "simulation" ? "simulation" : "normal",
+      macTable: parseMacTable(data.mac_table),
+      arpTable: parseArpTable(data.arp_table),
       tapAttach: parseTapAttach(data.tap_attach),
+      tapLog: parseTapLog(data.tap_log),
+      chatLog: parseChatLog(data.chat, device),
+      frame: frames[0] ?? null,
+      frameQueue: frames.slice(1),
     };
   }
 
@@ -731,6 +742,51 @@ function withChangedFields(frame: SimFrameView, prev: SimFrameView | null, scree
       }
     : frame.ingress;
   return { ...frame, changed: [...changed], ingress };
+}
+
+function parseFrameList(raw: unknown): SimFrameView[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.map((item) => parseFrame(item)).filter((row): row is SimFrameView => row != null);
+}
+
+function parseTapLog(raw: unknown): SimFrameView[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      if (rec.frame && typeof rec.frame === "object") {
+        const frame = parseFrame(rec.frame);
+        return frame ? { ...frame, at: frame.at || num(rec.at) } : null;
+      }
+      return parseFrame(item);
+    })
+    .filter((row): row is SimFrameView => row != null);
+}
+
+function parseChatLog(raw: unknown, device: Device): ChatLine[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const ips = new Set(
+    device.ports.map((port) => port.ip).filter((ip): ip is string => Boolean(ip)),
+  );
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      const from_ip = str(rec.from_ip);
+      const to_ip = str(rec.to_ip);
+      return {
+        from_ip,
+        to_ip,
+        text: str(rec.text),
+        dir: (ips.has(from_ip) ? "sent" : "received") as ChatLine["dir"],
+      };
+    })
+    .filter((row) => row.from_ip && row.to_ip);
 }
 
 function parseTapAttach(raw: unknown): TapAttachView[] {

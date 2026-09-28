@@ -1336,10 +1336,14 @@ main {
   color: var(--cyan);
   font-size: 0.68rem;
 }
-.canvas[data-kind="tap"] .port,
 .pc-back .port {
   width: 14%;
   height: 18%;
+}
+.canvas[data-kind="tap"] .port {
+  width: 8.2%;
+  height: 22%;
+  min-width: 0;
 }
 .canvas[data-kind="router"] .port {
   width: 3.8%;
@@ -1354,9 +1358,6 @@ main {
 .port[data-row="top"] .pid {
   top: auto;
   bottom: calc(100% + 2px);
-}
-.canvas[data-kind="tap"] .pid {
-  display: none;
 }
 .pc-front.photo-chassis,
 .stage[data-kind="pc"] .canvas.photo-chassis,
@@ -1404,22 +1405,23 @@ main {
   margin: 4px 0 0;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
-.stage[data-kind="tap"] .canvas,
 .stage[data-kind="router"] .canvas,
 .stage[data-kind="switch"] .canvas {
   max-width: 920px;
   margin: 0 auto;
 }
-.stage[data-kind="tap"] .peers.below {
-  grid-template-columns: repeat(2, minmax(160px, 280px));
-  justify-content: center;
+.stage[data-kind="tap"] .canvas {
+  max-width: 800px;
+  margin: 0 auto;
 }
 .stage[data-kind="switch"] .wires,
-.stage[data-kind="router"] .wires {
+.stage[data-kind="router"] .wires,
+.stage[data-kind="tap"] .wires {
   z-index: 2;
 }
 .stage[data-kind="switch"] .peers,
-.stage[data-kind="router"] .peers {
+.stage[data-kind="router"] .peers,
+.stage[data-kind="tap"] .peers {
   display: block;
   min-height: 78px;
   pointer-events: none;
@@ -1428,11 +1430,13 @@ main {
   min-height: 118px;
 }
 .stage[data-kind="switch"] .peer-slot,
-.stage[data-kind="router"] .peer-slot {
+.stage[data-kind="router"] .peer-slot,
+.stage[data-kind="tap"] .peer-slot {
   min-height: 0;
 }
 .stage[data-kind="switch"] .peer-box,
-.stage[data-kind="router"] .peer-box {
+.stage[data-kind="router"] .peer-box,
+.stage[data-kind="tap"] .peer-box {
   pointer-events: auto;
   z-index: 6;
   padding: 6px 10px 8px;
@@ -1447,24 +1451,29 @@ main {
   touch-action: none;
 }
 .stage[data-kind="switch"] .peer-box.dragging,
-.stage[data-kind="router"] .peer-box.dragging {
+.stage[data-kind="router"] .peer-box.dragging,
+.stage[data-kind="tap"] .peer-box.dragging {
   cursor: grabbing;
   z-index: 8;
   border-color: var(--cyan);
 }
 .stage[data-kind="switch"] .peer-box p,
-.stage[data-kind="router"] .peer-box p {
+.stage[data-kind="router"] .peer-box p,
+.stage[data-kind="tap"] .peer-box p {
   margin: 0;
 }
 .stage[data-kind="switch"] .peer-device,
 .stage[data-kind="switch"] .peer-port,
 .stage[data-kind="router"] .peer-device,
-.stage[data-kind="router"] .peer-port {
+.stage[data-kind="router"] .peer-port,
+.stage[data-kind="tap"] .peer-device,
+.stage[data-kind="tap"] .peer-port {
   font-size: 0.82rem;
   line-height: 1.25;
 }
 .stage[data-kind="switch"] .peer-link,
-.stage[data-kind="router"] .peer-link {
+.stage[data-kind="router"] .peer-link,
+.stage[data-kind="tap"] .peer-link {
   margin: 2px 0 0;
   font-size: 0.7rem;
 }
@@ -1475,20 +1484,23 @@ main {
   color: var(--cyan);
 }
 .stage[data-kind="switch"] .peer-box[data-row="top"] .box-dot,
-.stage[data-kind="router"] .peer-box[data-row="top"] .box-dot {
+.stage[data-kind="router"] .peer-box[data-row="top"] .box-dot,
+.stage[data-kind="tap"] .peer-box[data-row="top"] .box-dot {
   left: 50%;
   top: auto;
   bottom: -5px;
   transform: translateX(-50%);
 }
 .stage[data-kind="switch"] .peer-box[data-row="bot"] .box-dot,
-.stage[data-kind="router"] .peer-box[data-row="bot"] .box-dot {
+.stage[data-kind="router"] .peer-box[data-row="bot"] .box-dot,
+.stage[data-kind="tap"] .peer-box[data-row="bot"] .box-dot {
   left: 50%;
   top: -5px;
   transform: translateX(-50%);
 }
 .stage[data-kind="switch"] .port .pid,
-.stage[data-kind="router"] .port .pid {
+.stage[data-kind="router"] .port .pid,
+.stage[data-kind="tap"] .port .pid {
   top: auto;
   bottom: calc(100% + 1px);
   font-size: 0.52rem;
@@ -1496,7 +1508,8 @@ main {
   line-height: 1.15;
 }
 .stage[data-kind="switch"] .port-dot,
-.stage[data-kind="router"] .port-dot {
+.stage[data-kind="router"] .port-dot,
+.stage[data-kind="tap"] .port-dot {
   display: none;
 }
 .switch-brand {

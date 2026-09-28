@@ -276,9 +276,15 @@ const tapHtml = renderWorkbench(tap);
 assert.match(tapHtml, /过路帧/);
 assert.match(tapHtml, /过路/);
 assert.match(tapHtml, /<th>时间<\/th>/);
-assert.match(tapHtml, /<th>源<\/th>/);
-assert.match(tapHtml, /<th>目的地<\/th>/);
+assert.match(tapHtml, /<th>源IP<\/th>/);
+assert.match(tapHtml, /<th>目的IP<\/th>/);
+assert.match(tapHtml, /<th>源MAC<\/th>/);
+assert.match(tapHtml, /<th>目的MAC<\/th>/);
 assert.match(tapHtml, /<th>数据<\/th>/);
+assert.match(tapHtml, /192\.168\.1\.10/);
+assert.match(tapHtml, /192\.168\.2\.10/);
+assert.match(tapHtml, /aa:bb:cc:dd:ee:01/);
+assert.match(tapHtml, /aa:bb:cc:dd:ee:02/);
 assert.equal(tapHtml.includes("port-editor"), false);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

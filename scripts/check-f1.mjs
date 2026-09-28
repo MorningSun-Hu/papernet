@@ -46,6 +46,43 @@ const claimed = screenFromHttp(200, {
 assert.equal(claimed.kind, "claimed");
 assert.equal(ROLE_SHELL[claimed.device.kind], "pc");
 
+const restored = screenFromHttp(200, {
+  ok: true,
+  data: {
+    status: "claimed",
+    connection_id: "conn-pc",
+    classroom_id: "class-1",
+    mode: "simulation",
+    device: {
+      id: "PC1",
+      kind: "pc",
+      ports: [{ id: "PC1/01", ip: "192.168.1.10", peer_port_id: "S1/01" }],
+    },
+    links: [
+      {
+        link_id: "L1",
+        port_a: "PC1/01",
+        port_b: "S1/01",
+        physically_up: true,
+      },
+    ],
+    tap_attach: [{ tap_id: "TAP1", link_id: "L1" }],
+    chat: [{ from_ip: "192.168.1.10", to_ip: "192.168.1.11", text: "hi" }],
+    tap_log: [{ frame_id: "f1", src_ip: "192.168.1.10", dst_ip: "192.168.1.11", payload: "x", at: 9 }],
+  },
+});
+assert.equal(restored.kind, "claimed");
+assert.equal(restored.classroomId, "class-1");
+assert.equal(restored.mode, "simulation");
+assert.equal(restored.links[0].physically_up, true);
+assert.equal(restored.tapAttach[0].tap_id, "TAP1");
+assert.equal(restored.chatLog[0].text, "hi");
+assert.equal(restored.chatLog[0].dir, "sent");
+const keptHello = applyWsEvent(restored, { event: "hello", mode: "simulation" });
+assert.equal(keptHello.kind, "claimed");
+assert.equal(keptHello.tapAttach[0].tap_id, "TAP1");
+assert.equal(keptHello.chatLog[0].text, "hi");
+
 for (const kind of ["switch", "router", "tap"]) {
   const screen = screenFromHttp(200, {
     ok: true,
@@ -108,6 +145,7 @@ assert.equal(joinBody("conn-wait").connection_id, "conn-wait");
 const pathWs = wsPath("conn-wait");
 assert.ok(pathWs.startsWith("/ws?"));
 assert.ok(pathWs.includes("connection_id=conn-wait"));
+assert.ok(wsPath("conn-wait", "class-1").includes("classroom_id=class-1"));
 
 const inventory = buildInventory({
   pcCount: 2,
@@ -136,6 +174,7 @@ assert.ok(studentMain.includes("MSG_CLASSROOM_FULL"));
 assert.ok(studentMain.includes("MSG_NO_CLASSROOM"));
 assert.ok(studentMain.includes('kind === "full"'));
 assert.ok(studentMain.includes("wsPath"));
+assert.ok(studentMain.includes("STORAGE_CLASSROOM"));
 assert.ok(studentMain.includes("data-kind"));
 assert.ok(studentMain.includes("documentTitle"));
 assert.ok(studentMain.includes("visibilityState"));
@@ -145,6 +184,7 @@ const studentApi = fs.readFileSync(path.join(root, "web/student/src/api.ts"), "u
 assert.ok(studentApi.includes("/api/v1/classrooms/join"));
 assert.ok(studentApi.includes("joinBody"));
 assert.ok(studentApi.includes("STORAGE_CONNECTION"));
+assert.ok(studentApi.includes("STORAGE_CLASSROOM"));
 
 const teacherApi = fs.readFileSync(path.join(root, "web/teacher/src/api.ts"), "utf8");
 assert.ok(teacherApi.includes("/api/v1/classrooms"));

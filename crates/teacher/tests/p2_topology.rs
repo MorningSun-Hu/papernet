@@ -535,3 +535,68 @@ async fn restart_restores_inventory_and_clears_claims() {
     let (_, claimed) = join_claimed(state).await;
     assert!(claimed["id"].as_str().is_some());
 }
+
+#[tokio::test]
+async fn rejoin_returns_links_mode_and_tap_attach() {
+    let (state, _dir) = state();
+    let id = create_lab(state.clone()).await;
+    let roles = claim_roles(state.clone(), &id).await;
+    let (pc_conn, pc) = by_kind(&roles, "pc");
+    let (sw_conn, sw) = by_kind(&roles, "switch");
+    put_port(
+        state.clone(),
+        pc_conn,
+        pc["id"].as_str().unwrap(),
+        "PC1/01",
+        json!({"peer_port_id": "S1/01", "ip": "192.168.1.10"}),
+    )
+    .await;
+    put_port(
+        state.clone(),
+        sw_conn,
+        sw["id"].as_str().unwrap(),
+        "S1/01",
+        json!({"peer_port_id": "PC1/01"}),
+    )
+    .await;
+    let (st, attach) = send(
+        state.clone(),
+        "POST",
+        &format!("/api/v1/classrooms/{id}/taps/TAP1/attach"),
+        &[("x-client-kind", "teacher")],
+        Some(json!({"link": {"port_a": "PC1/01", "port_b": "S1/01"}})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(attach["data"]["tap_id"], "TAP1");
+
+    let (_, again) = send(
+        state.clone(),
+        "POST",
+        "/api/v1/classrooms/join",
+        &[],
+        Some(json!({"client_kind": "student-hosted", "connection_id": pc_conn})),
+    )
+    .await;
+    assert_eq!(again["data"]["status"], "claimed");
+    assert_eq!(again["data"]["classroom_id"], id);
+    assert_eq!(again["data"]["mode"], "normal");
+    assert_eq!(again["data"]["device"]["id"], pc["id"]);
+    let links = again["data"]["links"].as_array().expect("links");
+    assert!(links.iter().any(|l| l["physically_up"] == true));
+    assert_eq!(again["data"]["tap_attach"][0]["tap_id"], "TAP1");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let serve_state = state.clone();
+    tokio::spawn(async move {
+        axum::serve(listener, app(serve_state)).await.unwrap();
+    });
+    let url = format!("ws://{addr}/ws?connection_id={pc_conn}");
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("ws");
+    let hello = ws.next().await.expect("hello").expect("ok");
+    let hello_v: Value = serde_json::from_str(&hello.into_text().unwrap()).unwrap();
+    assert_eq!(hello_v["event"], "hello");
+    assert_eq!(hello_v["mode"], "normal");
+    assert_eq!(hello_v["tap_attach"][0]["tap_id"], "TAP1");
+}

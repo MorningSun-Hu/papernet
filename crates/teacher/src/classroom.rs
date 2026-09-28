@@ -568,6 +568,62 @@ impl Classroom {
         })
     }
 
+    pub fn student_join_fields(&self, device_id: &str) -> Value {
+        let device = self.devices.get(device_id);
+        let kind = device.map(|d| d.kind);
+        let ips: HashSet<String> = device
+            .map(|d| d.ports.iter().filter_map(|p| p.ip.clone()).collect())
+            .unwrap_or_default();
+        let chat: Vec<Value> = self
+            .chat_log
+            .iter()
+            .filter(|m| ips.contains(&m.from_ip) || ips.contains(&m.to_ip))
+            .map(|m| {
+                json!({
+                    "from_ip": m.from_ip,
+                    "to_ip": m.to_ip,
+                    "text": m.text,
+                    "delivered": m.delivered,
+                })
+            })
+            .collect();
+        let tap_log: Vec<Value> = if kind == Some(DeviceKind::Tap) {
+            self.tap_log
+                .iter()
+                .filter(|e| e.tap_id == device_id)
+                .map(|e| {
+                    let mut frame = e.frame.clone();
+                    if let Some(obj) = frame.as_object_mut() {
+                        obj.entry("at").or_insert(json!(e.at));
+                    }
+                    frame
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let frames: Vec<Value> = self
+            .frames
+            .values()
+            .filter(|f| f.at_device_id == device_id)
+            .map(frame_json)
+            .collect();
+        json!({
+            "classroom_id": self.classroom_id,
+            "mode": self.mode.as_str(),
+            "links": self.links,
+            "mac_table": self.mac_table,
+            "arp_table": self.arp_table,
+            "tap_attach": self.tap_attaches.iter().map(|(tap_id, link_id)| json!({
+                "tap_id": tap_id,
+                "link_id": link_id,
+            })).collect::<Vec<_>>(),
+            "chat": chat,
+            "tap_log": tap_log,
+            "frames": frames,
+        })
+    }
+
     pub fn send_chat(
         &mut self,
         connection_id: &str,
@@ -1251,5 +1307,41 @@ mod tests {
         assert_ne!(second, first_device);
         class.pause_claim();
         assert_eq!(class.claim_state, ClaimState::Full);
+    }
+
+    #[test]
+    fn student_join_fields_restore_links_chat_and_tap() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.mode = Mode::Simulation;
+        class.links = vec![LinkView {
+            link_id: "L1".into(),
+            port_a: "PC1/01".into(),
+            port_b: "S1/01".into(),
+            physically_up: true,
+        }];
+        class.tap_attaches.insert("TAP1".into(), "L1".into());
+        class.devices.get_mut("PC1").unwrap().ports[0].ip = Some("192.168.1.10".into());
+        class.chat_log.push_back(ChatMsg {
+            from_ip: "192.168.1.10".into(),
+            to_ip: "192.168.1.11".into(),
+            text: "hello".into(),
+            delivered: true,
+        });
+        class.tap_log.push_back(TapLogEntry {
+            tap_id: "TAP1".into(),
+            frame: json!({"frame_id": "f1", "src_ip": "192.168.1.10"}),
+            at: 42,
+        });
+        let pc = class.student_join_fields("PC1");
+        assert_eq!(pc["classroom_id"], "c1");
+        assert_eq!(pc["mode"], "simulation");
+        assert_eq!(pc["links"][0]["physically_up"], true);
+        assert_eq!(pc["chat"][0]["text"], "hello");
+        assert_eq!(pc["tap_attach"][0]["tap_id"], "TAP1");
+        assert!(pc["tap_log"].as_array().unwrap().is_empty());
     }
 }

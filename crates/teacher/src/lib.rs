@@ -189,6 +189,7 @@ async fn join_classroom(
                 "data": {
                     "status": "waiting_open",
                     "connection_id": connection_id,
+                    "classroom_id": id,
                     "message": MSG_WAITING_OPEN,
                 }
             })),
@@ -200,12 +201,7 @@ async fn join_classroom(
             StatusCode::OK,
             Json(json!({
                 "ok": true,
-                "data": {
-                    "status": "claimed",
-                    "connection_id": connection_id,
-                    "device": device,
-                    "tap_attach": tap_attach_json(&state, &id),
-                }
+                "data": claimed_join_data(&state, &id, &connection_id, device),
             })),
         )),
         JoinOutcome::Full => Err((
@@ -720,19 +716,47 @@ fn emit_online(state: &AppState, classroom_id: &str) {
     }
 }
 
-fn tap_attach_json(state: &AppState, classroom_id: &str) -> Value {
-    let Ok(store) = state.inner.lock() else {
-        return json!([]);
+
+fn claimed_join_data(
+    state: &AppState,
+    classroom_id: &str,
+    connection_id: &str,
+    device: Value,
+) -> Value {
+    let device_id = device
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let extra = {
+        let Ok(store) = state.inner.lock() else {
+            return json!({
+                "status": "claimed",
+                "connection_id": connection_id,
+                "classroom_id": classroom_id,
+                "device": device,
+                "tap_attach": json!([]),
+            });
+        };
+        store
+            .classrooms
+            .get(classroom_id)
+            .map(|c| c.student_join_fields(&device_id))
     };
-    match store.classrooms.get(classroom_id) {
-        Some(class) => json!(class
-            .tap_attaches
-            .iter()
-            .map(|(tap_id, link_id)| json!({"tap_id": tap_id, "link_id": link_id}))
-            .collect::<Vec<_>>()),
-        None => json!([]),
+    let mut data = json!({
+        "status": "claimed",
+        "connection_id": connection_id,
+        "classroom_id": classroom_id,
+        "device": device,
+    });
+    if let Some(Value::Object(map)) = extra {
+        if let Value::Object(data_map) = &mut data {
+            data_map.extend(map);
+        }
     }
+    data
 }
+
 
 fn current_classroom_id(store: &Store) -> Option<String> {
     store
@@ -772,18 +796,33 @@ async fn ws_upgrade(
 }
 
 async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
-    let mode = {
+    let (mode, tap_attach) = {
         let store = match state.inner.lock() {
             Ok(s) => s,
             Err(_) => return,
         };
-        match q.classroom_id.as_deref() {
-            Some(id) => store
-                .classrooms
-                .get(id)
-                .map(|c| c.mode)
-                .unwrap_or(Mode::Normal),
-            None => Mode::Normal,
+        let class = q
+            .classroom_id
+            .as_deref()
+            .and_then(|id| store.classrooms.get(id))
+            .or_else(|| {
+                q.connection_id.as_deref().and_then(|conn| {
+                    store
+                        .classrooms
+                        .values()
+                        .find(|c| c.connections.contains_key(conn))
+                })
+            });
+        match class {
+            Some(c) => (
+                c.mode,
+                Some(json!(c
+                    .tap_attaches
+                    .iter()
+                    .map(|(tap_id, link_id)| json!({"tap_id": tap_id, "link_id": link_id}))
+                    .collect::<Vec<_>>())),
+            ),
+            None => (Mode::Normal, None),
         }
     };
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -792,16 +831,14 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
             hub.txs.insert(conn_id, tx);
         }
     }
-    let hello = json!({
+    let mut hello = json!({
         "event": "hello",
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "mode": mode.as_str(),
-        "tap_attach": q
-            .classroom_id
-            .as_deref()
-            .map(|id| tap_attach_json(&state, id))
-            .unwrap_or_else(|| json!([])),
     });
+    if let Some(tap) = tap_attach {
+        hello["tap_attach"] = tap;
+    }
     if socket
         .send(Message::Text(hello.to_string().into()))
         .await

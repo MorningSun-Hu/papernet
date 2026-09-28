@@ -145,18 +145,20 @@ function tapBench(screen: ClaimedScreen): string {
           (frame) =>
             `<tr>
                <td>${escapeHtml(formatStamp(frame.at))}</td>
-               <td>${escapeHtml(frame.src_ip || frame.src_mac)}</td>
-               <td>${escapeHtml(frame.dst_ip || frame.dst_mac)}</td>
+               <td>${escapeHtml(frame.src_ip)}</td>
+               <td>${escapeHtml(frame.dst_ip)}</td>
+               <td>${escapeHtml(frame.src_mac)}</td>
+               <td>${escapeHtml(frame.dst_mac)}</td>
                <td class="tap-data">${escapeHtml(payloadSummary(frame.payload))}</td>
              </tr>`,
         )
         .join("")
-    : `<tr><td colspan="4" class="tap-empty">暂无过路帧</td></tr>`;
+    : `<tr><td colspan="6" class="tap-empty">暂无过路帧</td></tr>`;
   return `
     <section class="bench" data-role="tap">
       <h2>过路帧</h2>
       <table class="tap-log">
-        <thead><tr><th>时间</th><th>源</th><th>目的地</th><th>数据</th></tr></thead>
+        <thead><tr><th>时间</th><th>源IP</th><th>目的IP</th><th>源MAC</th><th>目的MAC</th><th>数据</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </section>

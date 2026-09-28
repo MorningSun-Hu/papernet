@@ -55,7 +55,7 @@ function rackStage(model: StageModel): string {
   const cols = two ? Math.ceil(n / 2) : n;
   const top = two ? model.ports.slice(0, cols) : model.ports;
   const bot = two ? model.ports.slice(cols) : [];
-  const wired = model.kind === "switch" || model.kind === "router";
+  const wired = model.kind === "switch" || model.kind === "router" || model.kind === "tap";
   const above = wired ? top.filter((p) => p.peerPortId) : [];
   const below = (wired ? bot : model.ports).filter((p) => p.peerPortId);
   const src = model.kind === "pc" ? PC_BACK : CHASSIS[model.kind];
@@ -143,7 +143,7 @@ export function rememberPeerBox(portId: string, left: number, top: number): void
 
 export function placePeerBoxes(root: HTMLElement): void {
   const stage = root.querySelector<HTMLElement>(".stage");
-  if (!stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router")) {
+  if (!stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap")) {
     return;
   }
   const stageBox = stage.getBoundingClientRect();

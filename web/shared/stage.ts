@@ -116,11 +116,11 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 function tapSlots(n: number): { x: number; y: number }[] {
-  const xs = [40.2, 51.8];
-  return Array.from({ length: n }, (_, i) => ({
-    x: xs[Math.min(i, xs.length - 1)] ?? 46,
-    y: 49,
-  }));
+  const slots = [
+    { x: 48.03, y: 48.7 },
+    { x: 58.26, y: 48.7 },
+  ];
+  return Array.from({ length: n }, (_, i) => slots[Math.min(i, slots.length - 1)] ?? { x: 50, y: 52 });
 }
 
 function routerSlots(n: number): { x: number; y: number }[] {

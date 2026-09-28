@@ -631,6 +631,12 @@ function openSocket(): void {
   };
   ws.onclose = () => {
     socket = null;
+    window.setTimeout(() => {
+      if (!classroomId) {
+        return;
+      }
+      void loadSnap();
+    }, 1000);
   };
 }
 

@@ -12,6 +12,7 @@ import {
   MSG_CHAT_UNREACHABLE,
   ROLE_LABEL,
   ROLE_SHELL,
+  STORAGE_CLASSROOM,
   wsPath,
   type Screen,
 } from "@shared/claim";
@@ -358,7 +359,11 @@ function openSocket(connectionId: string): void {
     return;
   }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const url = `${proto}://${location.host}${wsPath(connectionId)}`;
+  const classroomId =
+    (screen.kind === "waiting_open" || screen.kind === "claimed") && screen.classroomId
+      ? screen.classroomId
+      : sessionStorage.getItem(STORAGE_CLASSROOM);
+  const url = `${proto}://${location.host}${wsPath(connectionId, classroomId)}`;
   const ws = new WebSocket(url);
   socket = ws;
   ws.onmessage = (ev) => {
@@ -738,7 +743,7 @@ app.addEventListener("pointerdown", (ev) => {
   }
   const box = t.closest<HTMLElement>(".peer-box");
   const stage = app.querySelector<HTMLElement>(".stage");
-  if (!box?.dataset.port || !stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router")) {
+  if (!box?.dataset.port || !stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap")) {
     return;
   }
   ev.preventDefault();
