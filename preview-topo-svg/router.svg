@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="路由器">
+  <g fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="#073044" d="M24 50v36a40 15 0 0 0 80 0V50"/>
+    <ellipse cx="64" cy="50" rx="40" ry="15" fill="#0e5570"/>
+  </g>
+  <g transform="translate(64 49) scale(1 .56)" fill="#c5f6ff" fill-rule="evenodd">
+    <path d="M-9-13H6.5c6.8 0 11.5 3.6 11.5 9.2 0 4.4-2.8 7.6-7.4 8.8L18 14h-8.2L3 6H-3v8h-6zm6 6.4V1.2H4.2c3.8 0 6.2-1.8 6.2-4.4s-2.4-4.4-6.2-4.4z"/>
+  </g>
+  <g fill="#c5f6ff" stroke="#22d3ee" stroke-width="1.35" stroke-linejoin="round">
+    <path d="M64 60.5 58.4 68h3.4v6h4.4v-6h3.4z"/>
+    <path d="M64 91.5 69.6 84h-3.4v-6h-4.4v6h-3.4z"/>
+    <path d="M48.5 76 56 70.4v3.4h6v4.4h-6v3.4z"/>
+    <path d="M79.5 76 72 81.6v-3.4h-6v-4.4h6v-3.4z"/>
+  </g>
+</svg>

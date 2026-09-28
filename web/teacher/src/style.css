@@ -503,8 +503,8 @@ button[disabled] {
   cursor: grab;
 }
 .topo .node[data-kind="switch"] {
-  width: 96px;
-  height: 58px;
+  width: 90px;
+  height: 84px;
 }
 .topo .node[data-kind="tap"] {
   width: 72px;

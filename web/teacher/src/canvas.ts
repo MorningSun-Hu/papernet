@@ -1,6 +1,5 @@
 import type { DeviceKind } from "@shared/claim";
 import { TOPO_MODEL } from "@shared/models";
-import logicalSwitchUrl from "@icons/logical/switch.svg?url";
 import { logicalIconFile, type TopoLayout, type TopoSnapshot, type TopoView, buildTopo } from "@shared/topo";
 
 export type IconUrls = Partial<Record<DeviceKind, string>>;
@@ -64,9 +63,6 @@ function edgeMarkup(edge: TopoView["edges"][number]): string {
 }
 
 function modelSrc(kind: DeviceKind): string {
-  if (kind === "switch") {
-    return logicalSwitchUrl;
-  }
   return TOPO_MODEL[kind];
 }
 

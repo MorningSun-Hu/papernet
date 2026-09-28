@@ -131,7 +131,10 @@ const canvasSrc = fs.readFileSync(path.join(root, "web/teacher/src/canvas.ts"), 
 assert.match(canvasSrc, /data-claimed/);
 assert.match(canvasSrc, /model-img/);
 assert.match(canvasSrc, /TOPO_MODEL/);
-assert.match(canvasSrc, /logical\/switch\.svg/);
+const modelsSrc = fs.readFileSync(path.join(root, "web/shared/models.ts"), "utf8");
+assert.match(modelsSrc, /topo-switch-icon\.svg/);
+assert.match(modelsSrc, /topo-pc\.svg/);
+assert.equal(canvasSrc.includes("logical/switch.svg"), false);
 assert.match(canvasSrc, /data-topo-zoom/);
 assert.match(canvasSrc, /整理/);
 assert.equal(canvasSrc.includes("<image "), false);

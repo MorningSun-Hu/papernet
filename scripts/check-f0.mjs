@@ -54,5 +54,8 @@ assert.equal(studentStage.includes("metal-chassis"), false);
 for (const name of ["pc-front.png", "pc-back.png", "tap.png", "switch.png", "router.png", "topo-pc.png", "topo-switch.png", "topo-tap.png", "topo-router.png"]) {
   assert.ok(fs.existsSync(path.join(root, "assets/models", name)), `missing models/${name}`);
 }
+for (const name of ["topo-pc.svg", "topo-switch.svg", "topo-tap.svg", "topo-router.svg", "topo-switch-icon.svg", "topo-switch-icon.png"]) {
+  assert.ok(fs.existsSync(path.join(root, "assets/models", name)), `missing models/${name}`);
+}
 
 console.log("F0 checks passed");

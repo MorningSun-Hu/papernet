@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="网络分流器">
+  <g stroke="#22d3ee" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="#041c28" d="M14 60 64 82v24L14 84z"/>
+    <path fill="#073044" d="M114 60 64 82v24l50-22z"/>
+    <path fill="#0e5570" d="M64 16 114 60 64 82 14 60z"/>
+    <rect x="22" y="70" width="18" height="12" rx="1.6" fill="#041c28"/>
+    <rect x="88" y="70" width="18" height="12" rx="1.6" fill="#041c28"/>
+    <path fill="none" stroke-width="1.5" d="M25.5 73.5h11M25.5 78.5h11M91.5 73.5h11M91.5 78.5h11"/>
+  </g>
+  <path fill="#c5f6ff" stroke="#22d3ee" stroke-width="2.2" stroke-linejoin="round" d="M64 32l20 28H44z"/>
+</svg>
