@@ -378,3 +378,75 @@ async fn end_classroom_closes_student_ws() {
         other => panic!("expected classroom.ended or close, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn current_classroom_returns_active_snapshot() {
+    let (state, _dir) = state();
+    let empty = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/classrooms/current")
+                .header("x-client-kind", "teacher")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(empty.status(), StatusCode::NOT_FOUND);
+    let empty_body = json_body(empty).await;
+    assert_eq!(empty_body["error"]["code"], "NO_CLASSROOM");
+
+    let id = create_one_pc(state.clone()).await;
+    let current = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/classrooms/current")
+                .header("x-client-kind", "teacher")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(current.status(), StatusCode::OK);
+    let body = json_body(current).await;
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["classroom_id"], id);
+
+    let student = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/classrooms/current")
+                .header("x-client-kind", "student-hosted")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(student.status(), StatusCode::CONFLICT);
+    let student_body = json_body(student).await;
+    assert_eq!(student_body["error"]["code"], "NOT_OWNER");
+
+    let ended = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&format!("/api/v1/classrooms/{id}/end"))
+                .header("x-client-kind", "teacher")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ended.status(), StatusCode::OK);
+    let after = app(state)
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/classrooms/current")
+                .header("x-client-kind", "teacher")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after.status(), StatusCode::NOT_FOUND);
+}

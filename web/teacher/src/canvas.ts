@@ -59,7 +59,7 @@ function cssAttr(value: string): string {
 export { logicalIconFile };
 
 function edgeMarkup(edge: TopoView["edges"][number]): string {
-  return `<line class="link ${edge.style}" data-link="${escapeAttr(edge.id)}" x1="${edge.x1}" y1="${edge.y1}" x2="${edge.x2}" y2="${edge.y2}" />`;
+  return `<line class="link ${edge.style}" data-link="${escapeAttr(edge.id)}" x1="${edge.x1}" y1="${edge.y1}" x2="${edge.x2}" y2="${edge.y2}" vector-effect="non-scaling-stroke" />`;
 }
 
 function modelSrc(kind: DeviceKind): string {

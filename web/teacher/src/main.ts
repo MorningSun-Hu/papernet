@@ -2,7 +2,7 @@ import "./style.css";
 import { buildInventory, formatClaimRoster, targetClassroomInventory, wsPath } from "@shared/claim";
 import { brandLockup, hudClock } from "@shared/brand";
 import { applyTopoEvent, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
-import { attachTap, createClassroom, endClassroom, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
+import { attachTap, clearClassroomId, createClassroom, endClassroom, fetchCurrentClassroomId, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
 import { patchTopo, renderCanvas } from "./canvas";
 
 const app = mount();
@@ -595,6 +595,14 @@ async function loadSnap(): Promise<void> {
     }
     openSocket();
   } catch (err) {
+    if (err instanceof Error && err.name === "ClassroomGone") {
+      clearClassroomId();
+      classroomId = null;
+      snap = null;
+      claimState = "";
+      lastView = null;
+      layout = {};
+    }
     notice = err instanceof Error ? err.message : "读取拓扑失败";
   }
 }
@@ -733,4 +741,16 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-void loadSnap().then(() => render());
+async function boot(): Promise<void> {
+  if (!classroomId) {
+    try {
+      classroomId = await fetchCurrentClassroomId();
+    } catch (err) {
+      notice = err instanceof Error ? err.message : "读取当前课堂失败";
+    }
+  }
+  await loadSnap();
+  render();
+}
+
+void boot();

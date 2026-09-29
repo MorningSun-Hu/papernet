@@ -25,7 +25,23 @@ async function post(path: string, body?: unknown): Promise<{ status: number; jso
 }
 
 export function loadClassroomId(): string | null {
-  return sessionStorage.getItem(STORAGE_CLASSROOM);
+  const local = localStorage.getItem(STORAGE_CLASSROOM);
+  if (local) {
+    sessionStorage.removeItem(STORAGE_CLASSROOM);
+    return local;
+  }
+  const session = sessionStorage.getItem(STORAGE_CLASSROOM);
+  if (session) {
+    localStorage.setItem(STORAGE_CLASSROOM, session);
+    sessionStorage.removeItem(STORAGE_CLASSROOM);
+    return session;
+  }
+  return null;
+}
+
+export function clearClassroomId(): void {
+  localStorage.removeItem(STORAGE_CLASSROOM);
+  sessionStorage.removeItem(STORAGE_CLASSROOM);
 }
 
 export async function createClassroom(
@@ -41,7 +57,8 @@ export async function createClassroom(
   if (status >= 400 || !id) {
     throw new Error(json.error?.message || "创建课堂失败");
   }
-  sessionStorage.setItem(STORAGE_CLASSROOM, id);
+  localStorage.setItem(STORAGE_CLASSROOM, id);
+  sessionStorage.removeItem(STORAGE_CLASSROOM);
   return id;
 }
 
@@ -68,10 +85,35 @@ export async function fetchSnapshot(classroomId: string): Promise<unknown> {
     headers: { "X-Client-Kind": CLIENT_KIND_TEACHER },
   });
   const json = (await res.json().catch(() => ({}))) as ApiBody;
+  if (res.status === 404) {
+    const err = new Error(json.error?.message || "课堂不存在");
+    err.name = "ClassroomGone";
+    throw err;
+  }
   if (res.status >= 400) {
     throw new Error(json.error?.message || "读取快照失败");
   }
   return json.data ?? json;
+}
+
+export async function fetchCurrentClassroomId(): Promise<string | null> {
+  const res = await fetch("/api/v1/classrooms/current", {
+    headers: { "X-Client-Kind": CLIENT_KIND_TEACHER },
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  const json = (await res.json().catch(() => ({}))) as ApiBody;
+  if (res.status >= 400) {
+    throw new Error(json.error?.message || "读取当前课堂失败");
+  }
+  const id = typeof json.data?.classroom_id === "string" ? json.data.classroom_id : "";
+  if (!id) {
+    return null;
+  }
+  localStorage.setItem(STORAGE_CLASSROOM, id);
+  sessionStorage.removeItem(STORAGE_CLASSROOM);
+  return id;
 }
 
 export async function unbindDevice(classroomId: string, deviceId: string): Promise<void> {
@@ -111,5 +153,5 @@ export async function endClassroom(classroomId: string): Promise<void> {
   if (status >= 400) {
     throw new Error(json.error?.message || "结束课堂失败");
   }
-  sessionStorage.removeItem(STORAGE_CLASSROOM);
+  clearClassroomId();
 }

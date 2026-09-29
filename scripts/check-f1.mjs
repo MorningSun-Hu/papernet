@@ -190,9 +190,14 @@ const teacherApi = fs.readFileSync(path.join(root, "web/teacher/src/api.ts"), "u
 assert.ok(teacherApi.includes("/api/v1/classrooms"));
 assert.ok(teacherApi.includes("open-claim"));
 assert.ok(teacherApi.includes("buildInventory"));
+assert.ok(teacherApi.includes("localStorage"));
+assert.ok(teacherApi.includes("clearClassroomId"));
+assert.ok(teacherApi.includes("/api/v1/classrooms/current"));
+assert.ok(teacherApi.includes("fetchCurrentClassroomId"));
 
 const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), "utf8");
 assert.ok(teacherMain.includes("创建课堂"));
+assert.ok(teacherMain.includes("fetchCurrentClassroomId"));
 assert.ok(teacherMain.includes("开放领取"));
 assert.ok(teacherMain.includes("结束课堂"));
 assert.equal(teacherMain.includes("@icons/"), false);

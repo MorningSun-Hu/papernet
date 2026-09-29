@@ -232,19 +232,25 @@ button[disabled] {
   min-height: 70vh;
   display: block;
 }
-.topo .link {
-  stroke: rgba(148, 163, 184, 0.55);
-  stroke-width: 3;
+.topo .link,
+.topo .link.pending {
+  stroke: rgba(148, 163, 184, 0.7);
+  stroke-width: 2.5px;
   stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   fill: none;
+  vector-effect: non-scaling-stroke;
 }
 .topo .link.up {
   stroke: #4ade80;
+  stroke-width: 2.5px;
   stroke-dasharray: none;
-  filter: drop-shadow(0 0 4px rgba(74, 222, 128, 0.55));
-}
-.topo .link.pending {
-  stroke: rgba(148, 163, 184, 0.55);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px rgba(74, 222, 128, 0.4));
 }
 .topo text {
   font-size: 11px;
@@ -497,18 +503,10 @@ button[disabled] {
   position: absolute;
   transform: translate(-50%, -50%);
   width: 88px;
-  height: 64px;
+  height: 88px;
   text-align: center;
   pointer-events: auto;
   cursor: grab;
-}
-.topo .node[data-kind="switch"] {
-  width: 90px;
-  height: 84px;
-}
-.topo .node[data-kind="tap"] {
-  width: 72px;
-  height: 52px;
 }
 .model-hit {
   display: flex;

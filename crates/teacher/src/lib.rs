@@ -82,6 +82,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/health", get(health))
         .route("/api/v1/classrooms", post(create_classroom))
         .route("/api/v1/classrooms/join", post(join_classroom))
+        .route("/api/v1/classrooms/current", get(current_classroom))
         .route(
             "/api/v1/classrooms/{id}/open-claim",
             post(open_claim),
@@ -369,6 +370,26 @@ async fn snapshot(
         return Err(not_found("NO_CLASSROOM", "课堂不存在"));
     }
     store.active_id = Some(id.clone());
+    let class = store
+        .classrooms
+        .get(&id)
+        .ok_or_else(|| not_found("NO_CLASSROOM", "课堂不存在"))?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({"ok": true, "data": class.snapshot()})),
+    ))
+}
+
+async fn current_classroom(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    if hdr(&headers, "x-client-kind").as_deref() != Some("teacher") {
+        return Err(conflict("NOT_OWNER", "仅教师可查看快照"));
+    }
+    let store = state.inner.lock().map_err(|_| internal("store lock"))?;
+    let id = current_classroom_id(&store)
+        .ok_or_else(|| not_found("NO_CLASSROOM", "当前没有课堂"))?;
     let class = store
         .classrooms
         .get(&id)
