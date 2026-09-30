@@ -168,8 +168,63 @@ export function applyTopoEvent(snap: TopoSnapshot, payload: unknown): TopoSnapsh
   return { ...snap, devices, links, tapAttach };
 }
 
+export function compareDeviceId(a: string, b: string): number {
+  const [pa, na] = splitDeviceId(a);
+  const [pb, nb] = splitDeviceId(b);
+  if (pa !== pb) {
+    return pa.localeCompare(pb, "en");
+  }
+  return na - nb;
+}
+
+function splitDeviceId(id: string): [string, number] {
+  const m = /^([A-Za-z]+)(\d+)$/.exec(id);
+  if (!m) {
+    return [id, 0];
+  }
+  return [m[1], Number(m[2])];
+}
+
+function sortDevices(devices: TopoDevice[]): TopoDevice[] {
+  return [...devices].sort((a, b) => compareDeviceId(a.id, b.id));
+}
+
+export function arrangeTopo(view: TopoView, rowTol = 80): TopoLayout {
+  const nodes = [...view.nodes];
+  if (!nodes.length) {
+    return {};
+  }
+  nodes.sort((a, b) => a.y - b.y || a.x - b.x);
+  const rows: TopoNode[][] = [];
+  for (const node of nodes) {
+    const last = rows[rows.length - 1];
+    if (!last || Math.abs(node.y - last[0].y) > rowTol) {
+      rows.push([node]);
+    } else {
+      last.push(node);
+    }
+  }
+  const next: TopoLayout = {};
+  const gap = 168;
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x);
+    const y = Math.min(...row.map((n) => n.y));
+    const n = row.length;
+    if (n === 1) {
+      next[row[0].id] = { x: row[0].x, y };
+      continue;
+    }
+    const left = Math.min(...row.map((n) => n.x));
+    const right = Math.max(...row.map((n) => n.x));
+    const span = Math.max(gap * (n - 1), right - left);
+    row.forEach((node, i) => {
+      next[node.id] = { x: left + (span * i) / (n - 1), y };
+    });
+  }
+  return next;
+}
+
 export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView {
-  const height = 640;
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
   const row: Record<Exclude<DeviceKind, "tap"> | "tap-free", TopoDevice[]> = {
     pc: [],
@@ -189,13 +244,15 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
   }
   const gap = 168;
   const pad = 110;
-  const maxN = Math.max(1, row.pc.length, row.switch.length, row.router.length, row["tap-free"].length);
-  const width = Math.max(960, pad * 2 + gap * (maxN - 1));
+  const maxCols = 5;
+  const rowDy = 160;
+  const width = Math.max(960, pad * 2 + gap * (maxCols - 1));
   const nodes: TopoNode[] = [];
-  placeRow(nodes, row.pc, 90, width, pad, gap);
-  placeRow(nodes, row.switch, 250, width, pad, gap);
-  placeRow(nodes, row.router, 400, width, pad, gap);
-  placeRow(nodes, row["tap-free"], 520, width, pad, gap);
+  let y = 90;
+  y = placeWrapped(nodes, sortDevices(row.router), y, width, gap, maxCols, rowDy);
+  y = placeWrapped(nodes, [...sortDevices(row.switch), ...sortDevices(row["tap-free"])], y, width, gap, maxCols, rowDy);
+  y = placeWrapped(nodes, sortDevices(row.pc), y, width, gap, maxCols, rowDy);
+  const height = Math.max(640, y + 80);
   for (const node of nodes) {
     const pos = layout[node.id];
     if (pos) {
@@ -281,29 +338,34 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
   return { width, height, nodes, edges };
 }
 
-function placeRow(
+function placeWrapped(
   nodes: TopoNode[],
   devices: TopoDevice[],
   y: number,
   width: number,
-  pad: number,
   gap: number,
-): void {
-  const n = devices.length;
-  if (!n) {
-    return;
+  maxCols: number,
+  rowDy: number,
+): number {
+  if (!devices.length) {
+    return y;
   }
+  for (let i = 0; i < devices.length; i += maxCols) {
+    placeRow(nodes, devices.slice(i, i + maxCols), y, width, gap);
+    y += rowDy;
+  }
+  return y;
+}
+
+function placeRow(nodes: TopoNode[], devices: TopoDevice[], y: number, width: number, gap: number): void {
+  const n = devices.length;
+  const span = n > 1 ? gap * (n - 1) : 0;
+  const start = (width - span) / 2;
   devices.forEach((device, i) => {
-    let x = width / 2;
-    if (n > 1) {
-      const span = Math.max(gap * (n - 1), width - pad * 2);
-      const start = (width - span) / 2;
-      x = start + (span * i) / (n - 1);
-    }
     nodes.push({
       id: device.id,
       kind: device.kind,
-      x,
+      x: start + gap * i,
       y,
       labels: deviceLabels(device),
       onLink: null,

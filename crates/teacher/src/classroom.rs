@@ -199,20 +199,8 @@ impl Classroom {
         }
 
         if let Some(id) = connection_id.as_deref() {
-            if let Some(conn) = self.connections.get_mut(id) {
-                if let Some(mac) = nic_mac.clone() {
-                    conn.nic_mac = Some(mac);
-                }
-                conn.client_kind = client_kind;
-                conn.last_seen = now_stamp();
-                if let Some(device_id) = conn.device_id.clone() {
-                    let device = self.device_snapshot(&device_id);
-                    return Ok(JoinOutcome::Claimed {
-                        connection_id: id.to_string(),
-                        device,
-                    });
-                }
-                return Ok(self.claim_or_wait(id.to_string()));
+            if let Some(outcome) = self.resume_join(id, client_kind, nic_mac.clone()) {
+                return Ok(outcome);
             }
         }
 
@@ -231,6 +219,63 @@ impl Classroom {
         Ok(self.claim_or_wait(connection_id))
     }
 
+    fn device_id_claimed_by(&self, connection_id: &str) -> Option<String> {
+        self.devices
+            .values()
+            .find(|d| d.claimed_connection_id.as_deref() == Some(connection_id))
+            .map(|d| d.id.clone())
+    }
+
+    fn resume_join(
+        &mut self,
+        id: &str,
+        client_kind: ClientKind,
+        nic_mac: Option<String>,
+    ) -> Option<JoinOutcome> {
+        let bound_device = self
+            .connections
+            .get(id)
+            .and_then(|c| c.device_id.clone())
+            .or_else(|| self.device_id_claimed_by(id));
+        if let Some(device_id) = bound_device {
+            if let Some(conn) = self.connections.get_mut(id) {
+                if let Some(mac) = nic_mac {
+                    conn.nic_mac = Some(mac);
+                }
+                conn.client_kind = client_kind;
+                conn.device_id = Some(device_id.clone());
+                conn.last_seen = now_stamp();
+            } else {
+                self.connections.insert(
+                    id.to_string(),
+                    Conn {
+                        connection_id: id.to_string(),
+                        client_kind,
+                        device_id: Some(device_id.clone()),
+                        nic_mac,
+                        last_seen: now_stamp(),
+                    },
+                );
+            }
+            let device = self.device_snapshot(&device_id);
+            return Some(JoinOutcome::Claimed {
+                connection_id: id.to_string(),
+                device,
+            });
+        }
+        if self.connections.contains_key(id) {
+            if let Some(conn) = self.connections.get_mut(id) {
+                if let Some(mac) = nic_mac {
+                    conn.nic_mac = Some(mac);
+                }
+                conn.client_kind = client_kind;
+                conn.last_seen = now_stamp();
+            }
+            return Some(self.claim_or_wait(id.to_string()));
+        }
+        None
+    }
+
     fn claim_or_wait(&mut self, connection_id: String) -> JoinOutcome {
         match self.claim_state {
             ClaimState::Draft | ClaimState::Paused => JoinOutcome::WaitingOpen { connection_id },
@@ -239,6 +284,17 @@ impl Classroom {
     }
 
     fn try_claim(&mut self, connection_id: String) -> JoinOutcome {
+        if let Some(device_id) = self.device_id_claimed_by(&connection_id) {
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.device_id = Some(device_id.clone());
+                conn.last_seen = now_stamp();
+            }
+            let device = self.device_snapshot(&device_id);
+            return JoinOutcome::Claimed {
+                connection_id,
+                device,
+            };
+        }
         if let Some(device_id) = self.pick_unclaimed() {
             self.bind_claim(&connection_id, &device_id);
             let device = self.device_snapshot(&device_id);
@@ -1299,6 +1355,98 @@ mod tests {
         assert!(!class.drop_if_waiting(&claimed));
         assert!(class.connections.contains_key(&claimed));
         assert_eq!(class.devices["PC1"].claimed_connection_id.as_deref(), Some(claimed.as_str()));
+    }
+
+    #[test]
+    fn rejoin_with_same_connection_id_restores_claimed_device() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.claim_state = ClaimState::Open;
+        let first = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::Claimed { connection_id, device } => {
+                assert_eq!(device["id"], "PC1");
+                connection_id
+            }
+            _ => panic!("expected claimed"),
+        };
+        assert_eq!(class.claim_state, ClaimState::Full);
+        let again = class
+            .join(ClientKind::StudentHosted, Some(first.clone()), None)
+            .expect("rejoin");
+        match again {
+            JoinOutcome::Claimed { connection_id, device } => {
+                assert_eq!(connection_id, first);
+                assert_eq!(device["id"], "PC1");
+            }
+            _ => panic!("expected claimed restore"),
+        }
+        let stranger = class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("stranger");
+        assert!(matches!(stranger, JoinOutcome::Full));
+    }
+
+    #[test]
+    fn rejoin_restores_claim_when_connection_entry_missing() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.claim_state = ClaimState::Open;
+        let first = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::Claimed { connection_id, .. } => connection_id,
+            _ => panic!("expected claimed"),
+        };
+        class.connections.remove(&first);
+        assert_eq!(
+            class.devices["PC1"].claimed_connection_id.as_deref(),
+            Some(first.as_str())
+        );
+        let again = class
+            .join(ClientKind::StudentHosted, Some(first.clone()), None)
+            .expect("rejoin");
+        match again {
+            JoinOutcome::Claimed { connection_id, device } => {
+                assert_eq!(connection_id, first);
+                assert_eq!(device["id"], "PC1");
+            }
+            _ => panic!("expected claimed restore"),
+        }
+        assert!(class.connections.contains_key(&first));
+        assert_eq!(class.connections[&first].device_id.as_deref(), Some("PC1"));
+    }
+
+    #[test]
+    fn unknown_connection_id_gets_new_identity() {
+        let inv = Inventory {
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        class.claim_state = ClaimState::Open;
+        let stale = "n-stale-from-previous-class".to_string();
+        let outcome = class
+            .join(ClientKind::StudentHosted, Some(stale.clone()), None)
+            .expect("join");
+        match outcome {
+            JoinOutcome::Claimed { connection_id, device } => {
+                assert_ne!(connection_id, stale);
+                assert_eq!(device["id"], "PC1");
+                assert!(!class.connections.contains_key(&stale));
+                assert!(class.connections.contains_key(&connection_id));
+            }
+            _ => panic!("expected new claimed identity"),
+        }
     }
 
     #[test]

@@ -34,20 +34,52 @@ export async function joinClassroom(connectionId?: string | null): Promise<Scree
   return screenFromHttp(res.status, body);
 }
 
+function readPersist(key: string): string | null {
+  const local = localStorage.getItem(key);
+  if (local) {
+    sessionStorage.removeItem(key);
+    return local;
+  }
+  const session = sessionStorage.getItem(key);
+  if (session) {
+    localStorage.setItem(key, session);
+    sessionStorage.removeItem(key);
+    return session;
+  }
+  return null;
+}
+
+function writePersist(key: string, value: string): void {
+  localStorage.setItem(key, value);
+  sessionStorage.removeItem(key);
+}
+
 export function loadConnectionId(): string | null {
-  return sessionStorage.getItem(STORAGE_CONNECTION);
+  return readPersist(STORAGE_CONNECTION);
+}
+
+export function loadClassroomId(): string | null {
+  return readPersist(STORAGE_CLASSROOM);
+}
+
+export function clearStudentIdentity(): void {
+  localStorage.removeItem(STORAGE_CONNECTION);
+  localStorage.removeItem(STORAGE_CLASSROOM);
+  sessionStorage.removeItem(STORAGE_CONNECTION);
+  sessionStorage.removeItem(STORAGE_CLASSROOM);
 }
 
 export function persistScreen(screen: Screen): void {
   if (screen.kind === "waiting_open" || screen.kind === "claimed") {
-    sessionStorage.setItem(STORAGE_CONNECTION, screen.connectionId);
+    writePersist(STORAGE_CONNECTION, screen.connectionId);
     if (screen.classroomId) {
-      sessionStorage.setItem(STORAGE_CLASSROOM, screen.classroomId);
+      writePersist(STORAGE_CLASSROOM, screen.classroomId);
     }
     return;
   }
-  sessionStorage.removeItem(STORAGE_CONNECTION);
-  sessionStorage.removeItem(STORAGE_CLASSROOM);
+  if (screen.kind === "idle") {
+    clearStudentIdentity();
+  }
 }
 
 export async function listPeers(connectionId: string): Promise<string[]> {

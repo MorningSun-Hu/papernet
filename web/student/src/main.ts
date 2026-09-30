@@ -11,7 +11,6 @@ import {
   MSG_CHAT_UNREACHABLE,
   ROLE_LABEL,
   ROLE_SHELL,
-  STORAGE_CLASSROOM,
   wsPath,
   type Screen,
 } from "@shared/claim";
@@ -22,6 +21,7 @@ import {
   forwardFrame,
   joinClassroom,
   listPeers,
+  loadClassroomId,
   loadConnectionId,
   persistScreen,
   putPort,
@@ -368,7 +368,7 @@ function openSocket(connectionId: string): void {
   const classroomId =
     (screen.kind === "waiting_open" || screen.kind === "claimed") && screen.classroomId
       ? screen.classroomId
-      : sessionStorage.getItem(STORAGE_CLASSROOM);
+      : loadClassroomId();
   const url = `${proto}://${location.host}${wsPath(connectionId, classroomId)}`;
   const ws = new WebSocket(url);
   socket = ws;
@@ -420,8 +420,7 @@ function scheduleJoinRetry(): void {
       return;
     }
     try {
-      const fromUrl = currentStudentClient().connectionId;
-      const next = await joinClassroom(fromUrl || null);
+      const next = await joinClassroom(loadConnectionId());
       setScreen(next);
     } catch {
       scheduleJoinRetry();
@@ -478,7 +477,7 @@ async function boot(): Promise<void> {
   await waitUntilActive();
   try {
     const fromUrl = currentStudentClient().connectionId;
-    const next = await joinClassroom(fromUrl || loadConnectionId());
+    const next = await joinClassroom(loadConnectionId() || fromUrl);
     setScreen(next);
   } catch {
     bootStarted = false;

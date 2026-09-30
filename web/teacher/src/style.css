@@ -14,6 +14,7 @@
 html,
 body,
 #app {
+  height: 100%;
   min-height: 100%;
 }
 body {
@@ -32,9 +33,13 @@ main,
   max-width: none;
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
+}
+.console[data-phase="live"] {
+  height: 100%;
+  overflow: hidden;
 }
 .mast,
 .hud {
@@ -186,7 +191,8 @@ button[disabled] {
   padding: 16px;
   border-right: 1px solid var(--line);
   background: rgba(8, 16, 28, 0.72);
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 .mode-bar,
 .tap-form {
@@ -558,13 +564,27 @@ button[disabled] {
   margin: 0 0 8px;
 }
 .claim-list h3 {
+  flex-shrink: 0;
   font-size: 0.82rem;
   color: var(--muted);
+}
+.claim-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 168px;
+}
+.claim-list:not(.free) {
+  flex: 1 1 auto;
+  max-height: none;
 }
 .claim-list ul {
   list-style: none;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
 }
 .claim-list li {
   display: flex;
@@ -586,6 +606,7 @@ button[disabled] {
   background: var(--cyan);
 }
 .tip {
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 0.82rem;
 }
@@ -595,8 +616,15 @@ button[disabled] {
   background: var(--panel);
   overflow: hidden;
 }
+.acc[data-open="true"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .acc-hd {
   display: flex;
+  flex-shrink: 0;
   width: 100%;
   align-items: center;
   justify-content: space-between;
@@ -619,6 +647,9 @@ button[disabled] {
   flex-direction: column;
   gap: 12px;
   padding: 0 12px 12px;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
 }
 .acc .claim-meter,
 .acc .claim-list,

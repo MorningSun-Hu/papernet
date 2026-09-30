@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   LOGICAL_ICON_DIR,
   applyTopoEvent,
+  arrangeTopo,
   buildTopo,
   logicalIconFile,
   parseTopoSnapshot,
@@ -37,6 +38,9 @@ assert.match(teacherMain, /pointerdown/);
 assert.match(teacherMain, /bindTopoDrag/);
 assert.match(teacherMain, /bindTopoTools/);
 assert.match(teacherMain, /data-topo-arrange/);
+assert.match(teacherMain, /arrangeTopo/);
+assert.match(teacherMain, /<h3>已领取<\/h3>/);
+assert.match(teacherMain, /<h3>未领取<\/h3>/);
 assert.match(teacherMain, /topoZoom/);
 assert.match(teacherMain, /stepper\("routerPorts", "路由器口数", form.routerPorts, 1, 3\)/);
 
@@ -79,6 +83,18 @@ const moved = buildTopo(snap, { PC1: { x: 12, y: 34 } });
 assert.equal(moved.nodes.find((n) => n.id === "PC1")?.x, 12);
 assert.equal(moved.nodes.find((n) => n.id === "PC1")?.y, 34);
 assert.deepEqual([...kinds].sort(), ["pc", "router", "switch", "tap"]);
+const r1 = view.nodes.find((n) => n.id === "R1");
+const s1 = view.nodes.find((n) => n.id === "S1");
+const pc1 = view.nodes.find((n) => n.id === "PC1");
+const tap1 = view.nodes.find((n) => n.id === "TAP1");
+assert.ok(r1 && s1 && pc1 && tap1);
+assert.ok(r1.y < s1.y);
+assert.ok(s1.y < pc1.y);
+assert.equal(s1.y, tap1.y);
+assert.ok(s1.x < tap1.x);
+assert.equal(r1.x, view.width / 2);
+assert.equal((s1.x + tap1.x) / 2, view.width / 2);
+assert.equal(pc1.x, view.width / 2);
 assert.ok(view.nodes.every((n) => n.labels[0] === n.id));
 assert.ok(view.nodes.find((n) => n.id === "PC1")?.labels.some((l) => l.includes("PC1/01")));
 assert.ok(view.nodes.find((n) => n.id === "R1")?.labels.some((l) => l.includes("192.168.1.1")));
@@ -149,5 +165,43 @@ assert.equal(freed.devices.find((d) => d.id === "PC1")?.claimed, false);
 
 assert.match(canvasSrc, /cssAttr\(edge\.id\)/);
 assert.match(canvasSrc, /escapeAttr\(edge\.id\)/);
+
+const numbered = parseTopoSnapshot({
+  mode: "normal",
+  devices: [
+    { id: "PC10", kind: "pc", ports: [] },
+    { id: "PC2", kind: "pc", ports: [] },
+    { id: "PC1", kind: "pc", ports: [] },
+    { id: "S1", kind: "switch", ports: [] },
+    { id: "R1", kind: "router", ports: [] },
+  ],
+  links: [],
+  tap_attach: [],
+});
+assert.ok(numbered);
+const ordered = buildTopo(numbered);
+const pcX = ["PC1", "PC2", "PC10"].map((id) => ordered.nodes.find((n) => n.id === id)?.x);
+assert.ok(pcX[0] < pcX[1] && pcX[1] < pcX[2]);
+
+const many = parseTopoSnapshot({
+  mode: "normal",
+  devices: Array.from({ length: 6 }, (_, i) => ({ id: `PC${i + 1}`, kind: "pc", ports: [] })).concat([
+    { id: "S1", kind: "switch", ports: [] },
+    { id: "R1", kind: "router", ports: [] },
+  ]),
+  links: [],
+  tap_attach: [],
+});
+assert.ok(many);
+const wrapped = buildTopo(many);
+const pcYs = new Set(wrapped.nodes.filter((n) => n.kind === "pc").map((n) => n.y));
+assert.equal(pcYs.size, 2);
+assert.ok(wrapped.nodes.find((n) => n.id === "PC6")?.y > wrapped.nodes.find((n) => n.id === "PC1")?.y);
+
+const custom = buildTopo(snap, { PC1: { x: 40, y: 500 }, R1: { x: 200, y: 80 } });
+const arranged = arrangeTopo(custom);
+assert.equal(arranged.PC1?.y, 500);
+assert.equal(arranged.R1?.y, 80);
+assert.notEqual(arranged.PC1?.y, view.nodes.find((n) => n.id === "PC1")?.y);
 
 console.log("F4 checks passed");

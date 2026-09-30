@@ -260,6 +260,63 @@ async fn claimed_survives_disconnect_and_reconnect() {
 }
 
 #[tokio::test]
+async fn claimed_rejoin_same_connection_when_classroom_full() {
+    let (state, _dir) = state();
+    let id = create_with_pcs(state.clone(), 1).await;
+    post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    let (_, claimed) = post(
+        state.clone(),
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted"}),
+    )
+    .await;
+    let conn_id = claimed["data"]["connection_id"].as_str().unwrap().to_string();
+    let device_id = claimed["data"]["device"]["id"].as_str().unwrap().to_string();
+    let (status, again) = post(
+        state,
+        "/api/v1/classrooms/join",
+        json!({"client_kind": "student-hosted", "connection_id": conn_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again["data"]["status"], "claimed");
+    assert_eq!(again["data"]["connection_id"], conn_id);
+    assert_eq!(again["data"]["device"]["id"], device_id);
+}
+
+#[tokio::test]
+async fn stale_connection_id_does_not_resume_in_new_classroom() {
+    let (state, _dir) = state();
+    let id = create_with_pcs(state.clone(), 1).await;
+    post(
+        state.clone(),
+        &format!("/api/v1/classrooms/{id}/open-claim"),
+        json!({}),
+    )
+    .await;
+    let (status, v) = post(
+        state,
+        "/api/v1/classrooms/join",
+        json!({
+            "client_kind": "student-hosted",
+            "connection_id": "n-stale-from-previous-class"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(v["data"]["status"], "claimed");
+    assert_ne!(
+        v["data"]["connection_id"].as_str().unwrap(),
+        "n-stale-from-previous-class"
+    );
+}
+
+#[tokio::test]
 async fn hosted_pc_gets_generated_unicast_mac() {
     let (state, _dir) = state();
     let id = create_with_pcs(state.clone(), 1).await;

@@ -1,7 +1,7 @@
 import "./style.css";
 import { buildInventory, formatClaimRoster, labTestInventory, wsPath } from "@shared/claim";
 import { brandLockup, hudClock } from "@shared/brand";
-import { applyTopoEvent, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
+import { applyTopoEvent, arrangeTopo, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
 import { attachTap, clearClassroomId, createClassroom, endClassroom, fetchCurrentClassroomId, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
 import { patchTopo, renderCanvas } from "./canvas";
 
@@ -213,43 +213,57 @@ function statusLine(): string {
   return `${head}${bits.join("。")}`;
 }
 
+function claimBrief(): string {
+  if (!classroomId) {
+    return "先确定本课设备。";
+  }
+  if (claimState === "paused") {
+    return "领取已暂停。";
+  }
+  if (claimState === "full") {
+    return "本课设备已领完。";
+  }
+  if (claimState === "open") {
+    return "已开放领取。";
+  }
+  return "课堂已创建，尚未开放领取。";
+}
+
+function claimDeviceRows(claimed: boolean): string {
+  if (!snap) {
+    return "<li>暂无</li>";
+  }
+  const order: Record<string, number> = { pc: 0, switch: 1, router: 2, tap: 3 };
+  const rows = snap.devices
+    .filter((d) => d.claimed === claimed)
+    .sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.id.localeCompare(b.id, "en", { numeric: true }));
+  if (!rows.length) {
+    return "<li>暂无</li>";
+  }
+  return rows
+    .map((d) => {
+      const label = d.kind === "pc" ? "PC" : d.kind === "switch" ? "交换机" : d.kind === "router" ? "路由器" : "网络分流器";
+      return `<li data-kind="${escapeAttr(d.kind)}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(d.id)}</strong></li>`;
+    })
+    .join("");
+}
+
 function claimPanel(): string {
   const roster = snap ? formatClaimRoster(snap.devices) : { taken: 0, total: 0, claimed: "", free: "" };
   const pct = roster.total ? Math.round((roster.taken / roster.total) * 100) : 0;
-  const claimedRows = snap
-    ? snap.devices
-        .filter((d) => d.claimed)
-        .map((d) => `<li data-kind="${escapeAttr(d.kind)}"><span>${escapeHtml(d.kind === "pc" ? "PC" : d.kind === "switch" ? "交换机" : d.kind === "router" ? "路由器" : "网络分流器")}</span><strong>${escapeHtml(d.id)}</strong></li>`)
-        .join("")
-    : "";
-  const freeKinds = [
-    ["pc", "PC"],
-    ["switch", "交换机"],
-    ["router", "路由器"],
-    ["tap", "网络分流器"],
-  ] as const;
-  const freeRows = snap
-    ? freeKinds
-        .map(([kind, label]) => {
-          const all = snap!.devices.filter((d) => d.kind === kind);
-          const free = all.filter((d) => !d.claimed).length;
-          return `<li><span>${label}</span><em>${free}/${all.length}</em></li>`;
-        })
-        .join("")
-    : "";
   return `
-    <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
+    <p class="status" data-claim="${escapeAttr(claimState)}">${claimBrief()}</p>
     <div class="claim-meter">
       <p>已领取 <strong>${roster.taken}/${roster.total}</strong></p>
       <span class="meter"><i style="width:${pct}%"></i></span>
     </div>
     <div class="claim-list">
-      <h3>已领设备</h3>
-      <ul>${claimedRows || "<li>暂无</li>"}</ul>
+      <h3>已领取</h3>
+      <ul>${claimDeviceRows(true)}</ul>
     </div>
     <div class="claim-list free">
-      <h3>可领取设备</h3>
-      <ul>${freeRows}</ul>
+      <h3>未领取</h3>
+      <ul>${claimDeviceRows(false)}</ul>
     </div>
   `;
 }
@@ -472,7 +486,10 @@ function bindTopoTools(): void {
   });
   tools.querySelector<HTMLButtonElement>("[data-topo-arrange]")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    layout = {};
+    if (!snap) {
+      return;
+    }
+    layout = arrangeTopo(lastView ?? buildTopo(snap, layout));
     render();
   });
 }
