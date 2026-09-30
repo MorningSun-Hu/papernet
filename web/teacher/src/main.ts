@@ -49,6 +49,7 @@ let lastView: TopoView | null = null;
 let topoZoom = 100;
 let railOpen: "claim" | "tap" | "" = "claim";
 let claimFoldedByFull = false;
+let tapPick = { tapId: "", link: "" };
 
 const FIELD_LIMIT: Record<string, { min: number; max: number }> = {
   pcCount: { min: 0, max: 48 },
@@ -287,22 +288,34 @@ function tapBar(): string {
     return "";
   }
   const current = new Map(snap.tapAttach.map((row) => [row.tap_id, row.link_id]));
+  const tapId = taps.some((t) => t.id === tapPick.tapId) ? tapPick.tapId : taps[0].id;
+  const linkValue = (portA: string, portB: string) => `${portA}|${portB}`;
+  const linkSel = links.some((l) => linkValue(l.port_a, l.port_b) === tapPick.link)
+    ? tapPick.link
+    : linkValue(links[0].port_a, links[0].port_b);
   return `
     <form class="tap-form">
-      <label>挂接网络分流器
-        <select name="tap_id">${taps
+      <fieldset class="tap-pick">
+        <legend>网络分流器</legend>
+        ${taps
           .map((t) => {
             const hung = current.get(t.id);
             const mark = hung ? "（已挂接）" : "";
-            return `<option value="${escapeAttr(t.id)}">${escapeHtml(t.id)}${mark}</option>`;
+            const on = t.id === tapId ? "checked" : "";
+            return `<label class="tap-opt"><input type="radio" name="tap_id" value="${escapeAttr(t.id)}" ${on} /><span>${escapeHtml(t.id)}${mark}</span></label>`;
           })
-          .join("")}</select>
-      </label>
-      <label>链路
-        <select name="link">${links
-          .map((l) => `<option value="${escapeAttr(l.port_a)}|${escapeAttr(l.port_b)}">${escapeHtml(l.port_a)} — ${escapeHtml(l.port_b)}</option>`)
-          .join("")}</select>
-      </label>
+          .join("")}
+      </fieldset>
+      <fieldset class="tap-pick">
+        <legend>链路</legend>
+        ${links
+          .map((l) => {
+            const value = linkValue(l.port_a, l.port_b);
+            const on = value === linkSel ? "checked" : "";
+            return `<label class="tap-opt"><input type="radio" name="link" value="${escapeAttr(value)}" ${on} /><span>${escapeHtml(l.port_a)} — ${escapeHtml(l.port_b)}</span></label>`;
+          })
+          .join("")}
+      </fieldset>
       <button type="submit">挂接</button>
     </form>
   `;
@@ -428,6 +441,18 @@ function bind(): void {
   });
   bindTopoDrag();
   bindTopoTools();
+  bindTapPick();
+}
+
+function bindTapPick(): void {
+  const form = app.querySelector<HTMLFormElement>(".tap-form");
+  form?.addEventListener("change", () => {
+    const data = new FormData(form);
+    tapPick = {
+      tapId: String(data.get("tap_id") || ""),
+      link: String(data.get("link") || ""),
+    };
+  });
 }
 
 function bindTopoTools(): void {
@@ -627,6 +652,14 @@ function openSocket(): void {
       if (payload.event === "claim.full") {
         claimState = "full";
       }
+      if (payload.event === "hello") {
+        const mode = payload.mode === "simulation" ? "simulation" : payload.mode === "normal" ? "normal" : "";
+        if (snap && mode && mode !== snap.mode) {
+          snap = applyTopoEvent(snap, payload);
+          render();
+        }
+        return;
+      }
       if (
         payload.event === "classroom.online" ||
         payload.event === "claim.full" ||
@@ -636,7 +669,11 @@ function openSocket(): void {
         return;
       }
       if (snap) {
-        snap = applyTopoEvent(snap, payload);
+        const next = applyTopoEvent(snap, payload);
+        if (next === snap) {
+          return;
+        }
+        snap = next;
         render();
       }
     } catch {

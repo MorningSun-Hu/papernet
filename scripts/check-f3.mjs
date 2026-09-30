@@ -56,8 +56,18 @@ const lanPc = {
 assert.match(renderPcHosts(lanPc), /host-card/);
 assert.match(renderPcHosts(lanPc), /PC2/);
 assert.match(renderPcHosts(lanPc), /192\.168\.1\.20/);
+assert.match(renderPcHosts(lanPc), /PC3/);
 assert.equal(renderPcHosts(lanPc).includes("PC1"), false);
-assert.equal(renderPcHosts(lanPc).includes("PC3"), false);
+const fromLinks = {
+  ...pc,
+  pcHosts: [],
+  links: [
+    { link_id: "PC1-S1", port_a: "PC1/01", port_b: "S1/01", physically_up: true },
+    { link_id: "PC2-S1", port_a: "PC2/01", port_b: "S1/02", physically_up: true },
+  ],
+};
+assert.match(renderPcHosts(fromLinks), /PC2/);
+assert.equal(renderPcHosts(fromLinks).includes("PC1"), false);
 const framedPreview = previewPcFrame(
   {
     ...pc,

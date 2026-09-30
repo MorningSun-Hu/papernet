@@ -55,32 +55,17 @@ export function renderArpTable(screen: ClaimedScreen): string {
 }
 
 function reachablePcHosts(screen: ClaimedScreen): { id: string; ip: string; port_id: string; online: boolean }[] {
-  const mine = screen.device.ports[0];
-  const myPort = mine?.id || "";
-  const myIp = mine?.ip || "";
   const hosts = screen.pcHosts.length ? screen.pcHosts : hostsFromLinks(screen);
   const out = [];
   for (const host of hosts) {
-    if (host.id === screen.device.id) {
-      continue;
-    }
-    const ip = host.ip || "";
-    const portId = host.port_id || "";
-    if (!ip || !portId || !myPort) {
-      continue;
-    }
-    const learned = screen.arpTable.some(
-      (row) => row.device_id === screen.device.id && row.ip === ip,
-    );
-    const sameLan = Boolean(myIp && sameCClass(myIp, ip) && l2Reachable(myPort, portId, screen.links));
-    if (!learned && !sameLan) {
+    if (host.id === screen.device.id || !/^PC\d+$/i.test(host.id)) {
       continue;
     }
     out.push({
       id: host.id,
-      ip,
-      port_id: portId,
-      online: host.online || learned || sameLan,
+      ip: host.ip || "",
+      port_id: host.port_id || `${host.id}/01`,
+      online: host.online === true,
     });
   }
   return out;
@@ -102,62 +87,6 @@ function hostsFromLinks(screen: ClaimedScreen): { id: string; ip: string; port_i
     port_id: `${id}/01`,
     online: false,
   }));
-}
-
-function l2Reachable(from: string, to: string, links: ClaimedScreen["links"]): boolean {
-  if (from === to) {
-    return true;
-  }
-  const adj = new Map<string, Set<string>>();
-  const connect = (a: string, b: string) => {
-    if (!adj.has(a)) {
-      adj.set(a, new Set());
-    }
-    adj.get(a)!.add(b);
-  };
-  const ports = new Set<string>([from, to]);
-  for (const link of links) {
-    if (!link.physically_up) {
-      continue;
-    }
-    ports.add(link.port_a);
-    ports.add(link.port_b);
-    connect(link.port_a, link.port_b);
-    connect(link.port_b, link.port_a);
-  }
-  const groups = new Map<string, string[]>();
-  for (const portId of ports) {
-    const dev = portId.split("/")[0] || portId;
-    if (dev.startsWith("S") || dev.startsWith("TAP")) {
-      const list = groups.get(dev) || [];
-      list.push(portId);
-      groups.set(dev, list);
-    }
-  }
-  for (const siblings of groups.values()) {
-    for (let i = 0; i < siblings.length; i += 1) {
-      for (let j = i + 1; j < siblings.length; j += 1) {
-        connect(siblings[i], siblings[j]);
-        connect(siblings[j], siblings[i]);
-      }
-    }
-  }
-  const queue = [from];
-  const seen = new Set([from]);
-  while (queue.length) {
-    const cur = queue.shift()!;
-    for (const next of adj.get(cur) || []) {
-      if (next === to) {
-        return true;
-      }
-      if (seen.has(next)) {
-        continue;
-      }
-      seen.add(next);
-      queue.push(next);
-    }
-  }
-  return false;
 }
 
 export function previewPcFrame(screen: ClaimedScreen, toIp: string, text: string): SimFrameView {

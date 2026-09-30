@@ -375,6 +375,10 @@ function openSocket(connectionId: string): void {
   ws.onmessage = (ev) => {
     try {
       const payload = JSON.parse(String(ev.data));
+      if (payload.event === "claim.granted") {
+        void joinClassroom(connectionId).then(setScreen);
+        return;
+      }
       const next = applyWsEvent(screen, payload);
       if (next === screen) {
         return;
