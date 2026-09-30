@@ -162,7 +162,7 @@ impl Classroom {
                 (id, Device::from_materialized(d))
             })
             .collect();
-        Self {
+        let mut class = Self {
             classroom_id,
             title,
             claim_state: ClaimState::Draft,
@@ -178,7 +178,9 @@ impl Classroom {
             chat_log: VecDeque::new(),
             frames: HashMap::new(),
             tap_log: VecDeque::new(),
-        }
+        };
+        class.rebuild_tables();
+        class
     }
 
     pub fn join(
@@ -459,6 +461,7 @@ impl Classroom {
             "links": self.links,
             "mac_table": self.mac_table,
             "arp_table": self.arp_table,
+            "pc_hosts": self.pc_hosts(),
         }))
     }
 
@@ -568,6 +571,28 @@ impl Classroom {
         })
     }
 
+    pub fn pc_hosts(&self) -> Vec<Value> {
+        let mut rows: Vec<(String, Value)> = self
+            .devices
+            .values()
+            .filter(|d| d.kind == DeviceKind::Pc)
+            .map(|d| {
+                let port = d.ports.first();
+                (
+                    d.id.clone(),
+                    json!({
+                        "id": d.id,
+                        "ip": port.and_then(|p| p.ip.clone()),
+                        "port_id": port.map(|p| p.id.clone()),
+                        "online": d.claimed_connection_id.is_some(),
+                    }),
+                )
+            })
+            .collect();
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
+        rows.into_iter().map(|(_, v)| v).collect()
+    }
+
     pub fn student_join_fields(&self, device_id: &str) -> Value {
         let device = self.devices.get(device_id);
         let kind = device.map(|d| d.kind);
@@ -614,6 +639,7 @@ impl Classroom {
             "links": self.links,
             "mac_table": self.mac_table,
             "arp_table": self.arp_table,
+            "pc_hosts": self.pc_hosts(),
             "tap_attach": self.tap_attaches.iter().map(|(tap_id, link_id)| json!({
                 "tap_id": tap_id,
                 "link_id": link_id,
@@ -1082,7 +1108,7 @@ mod tests {
     #[test]
     fn chat_rejects_simulation_mode() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1116,7 +1142,7 @@ mod tests {
     #[test]
     fn inflight_cap_rejects_257th() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1134,7 +1160,7 @@ mod tests {
     #[test]
     fn delivered_frames_do_not_count_toward_inflight_cap() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1152,7 +1178,7 @@ mod tests {
     #[test]
     fn unbind_clears_claim_and_reopens_full_classroom() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1187,10 +1213,11 @@ mod tests {
     fn attach_tap_overwrites_previous_link() {
         use papernet_shared::{RouterSpec, SwitchSpec, TapSpec};
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             switches: vec![SwitchSpec {
                 id: "S1".into(),
                 port_count: 2,
+                ..Default::default()
             }],
             routers: vec![RouterSpec {
                 id: "R1".into(),
@@ -1221,7 +1248,7 @@ mod tests {
     fn open_claim_skips_waiters_without_live_ws() {
         use std::collections::HashSet;
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }, PcSpec { id: "PC2".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }, PcSpec { id: "PC2".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1247,7 +1274,7 @@ mod tests {
     #[test]
     fn drop_if_waiting_keeps_claimed_connections() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1278,7 +1305,7 @@ mod tests {
     fn pause_claim_holds_new_joins_until_reopened() {
         use std::collections::HashSet;
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }, PcSpec { id: "PC2".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }, PcSpec { id: "PC2".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1312,7 +1339,7 @@ mod tests {
     #[test]
     fn student_join_fields_restore_links_chat_and_tap() {
         let inv = Inventory {
-            pcs: vec![PcSpec { id: "PC1".into() }],
+            pcs: vec![PcSpec { id: "PC1".into(), ..Default::default() }],
             ..Default::default()
         };
         let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
@@ -1343,5 +1370,52 @@ mod tests {
         assert_eq!(pc["chat"][0]["text"], "hello");
         assert_eq!(pc["tap_attach"][0]["tap_id"], "TAP1");
         assert!(pc["tap_log"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn new_classroom_builds_links_from_inventory_peers() {
+        use papernet_shared::{PortSpec, RouterSpec, SwitchSpec};
+        let inv = Inventory {
+            pcs: vec![PcSpec {
+                id: "PC1".into(),
+                ip: Some("192.168.1.10".into()),
+                gateway: Some("192.168.1.1".into()),
+                peer_port_id: Some("S1/02".into()),
+            }],
+            switches: vec![SwitchSpec {
+                id: "S1".into(),
+                port_count: 2,
+                ports: vec![
+                    PortSpec {
+                        id: "S1/01".into(),
+                        peer_port_id: Some("R1/01".into()),
+                        ..Default::default()
+                    },
+                    PortSpec {
+                        id: "S1/02".into(),
+                        peer_port_id: Some("PC1/01".into()),
+                        ..Default::default()
+                    },
+                ],
+            }],
+            routers: vec![RouterSpec {
+                id: "R1".into(),
+                port_count: 1,
+                ports: vec![PortSpec {
+                    id: "R1/01".into(),
+                    ip: Some("192.168.1.1".into()),
+                    peer_port_id: Some("S1/01".into()),
+                    ..Default::default()
+                }],
+            }],
+            ..Default::default()
+        };
+        let class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        assert_eq!(class.links.len(), 2);
+        assert!(class.links.iter().all(|l| l.physically_up));
+        let pc = &class.devices["PC1"].ports[0];
+        assert_eq!(pc.ip.as_deref(), Some("192.168.1.10"));
+        assert_eq!(pc.gateway.as_deref(), Some("192.168.1.1"));
+        assert_eq!(pc.peer_port_id.as_deref(), Some("S1/02"));
     }
 }

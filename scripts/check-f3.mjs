@@ -13,7 +13,7 @@ import {
   blankClaimed,
   screenFromHttp,
 } from "../web/shared/claim.ts";
-import { linuxPing, renderPcChat, renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
+import { linuxPing, previewPcFrame, renderComposeDialog, renderPcChat, renderPcHosts, renderWorkbench, withoutTapPorts } from "../web/shared/workbench.ts";
 
 assert.equal(MSG_WRONG_PORT, "端口不正确");
 assert.equal(MSG_PORT_BUSY, "端口已被占用");
@@ -35,10 +35,44 @@ assert.equal(pc.kind, "claimed");
 const pcHtml = renderWorkbench(pc);
 assert.match(pcHtml, /对话窗口/);
 assert.match(pcHtml, /ARP 表/);
+assert.match(pcHtml, /MAC 地址/);
 assert.match(pcHtml, /ping/);
 assert.match(pcHtml, /发起聊天/);
 assert.match(renderPcChat(pc), /发起聊天/);
 assert.match(renderPcChat(pc), /data-chat-ping/);
+assert.match(renderPcHosts(pc), /暂无可达主机/);
+const lanPc = {
+  ...pc,
+  pcHosts: [
+    { id: "PC1", ip: "192.168.1.10", port_id: "PC1/01", online: true },
+    { id: "PC2", ip: "192.168.1.20", port_id: "PC2/01", online: true },
+    { id: "PC3", ip: "192.168.2.10", port_id: "PC3/01", online: true },
+  ],
+  links: [
+    { link_id: "PC1-S1", port_a: "PC1/01", port_b: "S1/01", physically_up: true },
+    { link_id: "PC2-S1", port_a: "PC2/01", port_b: "S1/02", physically_up: true },
+  ],
+};
+assert.match(renderPcHosts(lanPc), /host-card/);
+assert.match(renderPcHosts(lanPc), /PC2/);
+assert.match(renderPcHosts(lanPc), /192\.168\.1\.20/);
+assert.equal(renderPcHosts(lanPc).includes("PC1"), false);
+assert.equal(renderPcHosts(lanPc).includes("PC3"), false);
+const framedPreview = previewPcFrame(
+  {
+    ...pc,
+    arpTable: [{ device_id: "PC1", ip: "192.168.1.20", mac: "aa:bb:cc:dd:ee:20" }],
+    device: { id: "PC1", kind: "pc", ports: [{ id: "PC1/01", ip: "192.168.1.10", mac: "aa:bb:cc:dd:ee:01" }] },
+  },
+  "192.168.1.20",
+  "你好",
+);
+assert.equal(framedPreview.dst_ip, "192.168.1.20");
+assert.equal(framedPreview.src_ip, "192.168.1.10");
+assert.equal(framedPreview.dst_mac, "aa:bb:cc:dd:ee:20");
+assert.equal(framedPreview.src_mac, "aa:bb:cc:dd:ee:01");
+assert.match(renderComposeDialog(pc, "192.168.1.20", "你好"), /compose-form/);
+assert.match(renderComposeDialog(pc, "192.168.1.20", "你好"), /你好/);
 
 const talked = applyWsEvent(
   applyWsEvent(pc, {
@@ -74,17 +108,10 @@ const framed = applyWsEvent(pc, {
 });
 assert.equal(framed.kind, "claimed");
 const frameHtml = renderWorkbench({ ...framed, mode: "simulation" });
-assert.match(frameHtml, /data-part="header"/);
-assert.match(frameHtml, /data-part="payload"/);
-assert.match(frameHtml, /目的 MAC/);
-assert.match(frameHtml, /源 MAC/);
-assert.match(frameHtml, /源 IP/);
-assert.match(frameHtml, /目的 IP/);
-assert.match(frameHtml, /aa:bb:cc:dd:ee:02/);
 assert.match(frameHtml, /你好/);
-
-assert.match(frameHtml, /打包/);
-assert.match(frameHtml, /frame-cell/);
+assert.equal(frameHtml.includes("class=\"frame\""), false);
+assert.match(renderComposeDialog(pc, "192.168.2.10", "你好"), /data-part="header"/);
+assert.match(renderComposeDialog(pc, "192.168.2.10", "你好"), /frame-cell/);
 
 const delivered = applyWsEvent(pc, {
   event: "frame.arrived",
@@ -102,9 +129,19 @@ const delivered = applyWsEvent(pc, {
 assert.equal(delivered.kind, "claimed");
 assert.equal(delivered.frame?.status, "delivered");
 assert.equal(delivered.frame?.payload, "你好");
-const deliveredHtml = renderWorkbench({ ...delivered, mode: "simulation" });
-assert.match(deliveredHtml, /解包/);
-assert.match(deliveredHtml, /消息：你好/);
+const deliveredSim = { ...delivered, mode: "simulation" };
+const deliveredHtml = renderWorkbench(deliveredSim);
+assert.match(deliveredHtml, /wx-frame/);
+assert.match(deliveredHtml, /data-part="header"/);
+assert.match(deliveredHtml, /data-part="payload"/);
+assert.match(deliveredHtml, /目的 MAC/);
+assert.match(deliveredHtml, /源 MAC/);
+assert.match(deliveredHtml, /源 IP/);
+assert.match(deliveredHtml, /目的 IP/);
+assert.match(deliveredHtml, /aa:bb:cc:dd:ee:99/);
+assert.match(deliveredHtml, /你好/);
+assert.equal(deliveredHtml.includes("class=\"frame\""), false);
+assert.match(renderPcChat(deliveredSim), /wx-frame/);
 
 const pinged = applyPingDetail(pc, "来自 192.168.2.1 的虚拟响应");
 assert.equal(pinged.kind, "claimed");
@@ -287,25 +324,79 @@ assert.match(tapHtml, /aa:bb:cc:dd:ee:01/);
 assert.match(tapHtml, /aa:bb:cc:dd:ee:02/);
 assert.equal(tapHtml.includes("port-editor"), false);
 
+const longMsg = "这是一条非常非常长的测试消息，用来检查帧视图会不会被撑开。";
+const longCompose = renderComposeDialog(pc, "192.168.1.20", longMsg);
+assert.equal(longCompose.includes(longMsg), false);
+assert.match(longCompose, /\.\.\./);
+assert.match(longCompose, /这是一条非常非常长的测试消息/);
+
+const longFrame = (deviceId, extra = {}) => ({
+  frame_id: "FL",
+  dst_mac: "aa:bb:cc:dd:ee:02",
+  src_mac: "aa:bb:cc:dd:ee:01",
+  src_ip: "192.168.1.10",
+  dst_ip: "192.168.2.10",
+  payload: longMsg,
+  at_device_id: deviceId,
+  status: "inflight",
+  ...extra,
+});
+const swLongHtml = renderWorkbench(
+  applyWsEvent({ ...swTables, mode: "simulation" }, { event: "frame.arrived", frame: longFrame("S1") }),
+);
+assert.equal(swLongHtml.includes(longMsg), false);
+assert.match(swLongHtml, /转发数据帧/);
+assert.match(swLongHtml, /\.\.\./);
+
+const routerLongHtml = renderWorkbench(
+  applyWsEvent({ ...router, mode: "simulation" }, { event: "frame.arrived", frame: longFrame("R1") }),
+);
+assert.equal(routerLongHtml.includes(longMsg), false);
+assert.match(routerLongHtml, /\.\.\./);
+
+const tapLongHtml = renderWorkbench(
+  applyWsEvent(
+    blankClaimed("c-tap-long", {
+      id: "TAP1",
+      kind: "tap",
+      ports: [{ id: "TAP1/01" }, { id: "TAP1/02" }],
+    }),
+    { event: "frame.logged", frame: longFrame("TAP1") },
+  ),
+);
+assert.equal(tapLongHtml.includes(longMsg), false);
+assert.match(tapLongHtml, /\.\.\./);
+
+const pcLong = applyWsEvent(pc, {
+  event: "frame.arrived",
+  frame: longFrame("PC1", { status: "delivered", dst_mac: "aa:bb:cc:dd:ee:01" }),
+});
+const pcLongHtml = renderWorkbench({ ...pcLong, mode: "simulation" });
+assert.match(pcLongHtml, new RegExp(`wx-text">${longMsg}`));
+assert.equal(pcLongHtml.split(longMsg).length - 1, 1);
+
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.match(studentMain, /data-router-ping/);
 assert.match(studentMain, /router-ping-form/);
 assert.match(studentMain, /linuxPing/);
+assert.match(studentMain, /compose-form/);
+assert.match(studentMain, /renderComposeDialog/);
 assert.equal(studentMain.includes("classList.contains(\"ping-form\")"), false);
 
 const okPing = linuxPing("192.168.1.10", true);
-assert.match(okPing.header, /PING 192\.168\.1\.10 \(192\.168\.1\.10\) 56\(84\) bytes of data\./);
-assert.equal(okPing.replies.length, 5);
-assert.match(okPing.replies[0], /64 bytes from 192\.168\.1\.10: icmp_seq=1 ttl=64 time=/);
-assert.match(okPing.replies[4], /icmp_seq=5/);
-assert.match(okPing.stats[0], /--- 192\.168\.1\.10 ping statistics ---/);
-assert.match(okPing.stats[1], /5 packets transmitted, 5 received, 0% packet loss/);
-assert.match(okPing.stats[2], /rtt min\/avg\/max\/mdev/);
+assert.match(okPing.header, /正在 Ping 192\.168\.1\.10 具有 32 字节的数据:/);
+assert.equal(okPing.replies.length, 4);
+assert.match(okPing.replies[0], /来自 192\.168\.1\.10 的回复: 字节=32 时间=1ms TTL=128/);
+assert.match(okPing.replies[3], /时间=1ms TTL=128/);
+assert.match(okPing.stats[0], /192\.168\.1\.10 的 Ping 统计信息:/);
+assert.match(okPing.stats[1], /已发送 = 4，已接收 = 4，丢失 = 0 \(0% 丢失\)/);
+assert.match(okPing.stats[3], /最短 = 1ms，最长 = 2ms，平均 = 1ms/);
 
 const badPing = linuxPing("10.0.0.9", false);
-assert.equal(badPing.replies.length, 5);
-assert.match(badPing.replies[0], /Destination Host Unreachable/);
-assert.match(badPing.stats[1], /5 packets transmitted, 0 received, 100% packet loss/);
+assert.equal(badPing.replies.length, 4);
+assert.match(badPing.replies[0], /无法访问目标主机/);
+assert.match(badPing.stats[1], /已发送 = 4，已接收 = 0，丢失 = 4 \(100% 丢失\)/);
 
 console.log("F3 checks passed");

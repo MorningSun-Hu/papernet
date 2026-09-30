@@ -6,10 +6,13 @@ export function withoutTapPorts(ports: string[]): string[] {
   return ports.filter((id) => !id.startsWith("TAP"));
 }
 
-export function renderWorkbench(screen: ClaimedScreen, opts: { chatInStage?: boolean } = {}): string {
+export function renderWorkbench(
+  screen: ClaimedScreen,
+  opts: { chatInStage?: boolean; arpInStage?: boolean } = {},
+): string {
   const kind = screen.device.kind;
   if (kind === "pc") {
-    return pcBench(screen, opts.chatInStage === true);
+    return pcBench(screen, opts.chatInStage === true, opts.arpInStage === true);
   }
   if (kind === "switch") {
     return switchBench(screen);
@@ -24,6 +27,189 @@ export function renderPcChat(screen: ClaimedScreen): string {
   return chatPanel(screen);
 }
 
+export function renderPcHosts(screen: ClaimedScreen): string {
+  const cards: string[] = [];
+  const seen = new Set<string>();
+  for (const host of reachablePcHosts(screen)) {
+    const key = host.id;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const sub = [host.ip, host.port_id].filter(Boolean).join(" · ");
+    cards.push(`
+      <article class="host-card" data-up="${host.online}">
+        <span class="host-ico" aria-hidden="true"></span>
+        <div>
+          <p class="host-name">${escapeHtml(host.id)}</p>
+          <p class="host-meta">${escapeHtml(sub || "未配置")}</p>
+        </div>
+        <span class="host-state">${host.online ? "在线" : "离线"}</span>
+      </article>`);
+  }
+  return cards.join("") || `<p class="hint">暂无可达主机</p>`;
+}
+
+export function renderArpTable(screen: ClaimedScreen): string {
+  return arpTable(screen);
+}
+
+function reachablePcHosts(screen: ClaimedScreen): { id: string; ip: string; port_id: string; online: boolean }[] {
+  const mine = screen.device.ports[0];
+  const myPort = mine?.id || "";
+  const myIp = mine?.ip || "";
+  const hosts = screen.pcHosts.length ? screen.pcHosts : hostsFromLinks(screen);
+  const out = [];
+  for (const host of hosts) {
+    if (host.id === screen.device.id) {
+      continue;
+    }
+    const ip = host.ip || "";
+    const portId = host.port_id || "";
+    if (!ip || !portId || !myPort) {
+      continue;
+    }
+    const learned = screen.arpTable.some(
+      (row) => row.device_id === screen.device.id && row.ip === ip,
+    );
+    const sameLan = Boolean(myIp && sameCClass(myIp, ip) && l2Reachable(myPort, portId, screen.links));
+    if (!learned && !sameLan) {
+      continue;
+    }
+    out.push({
+      id: host.id,
+      ip,
+      port_id: portId,
+      online: host.online || learned || sameLan,
+    });
+  }
+  return out;
+}
+
+function hostsFromLinks(screen: ClaimedScreen): { id: string; ip: string; port_id: string; online: boolean }[] {
+  const ids = new Set<string>();
+  for (const link of screen.links) {
+    for (const portId of [link.port_a, link.port_b]) {
+      const dev = portId.split("/")[0] || portId;
+      if (/^PC\d+$/i.test(dev)) {
+        ids.add(dev);
+      }
+    }
+  }
+  return [...ids].sort().map((id) => ({
+    id,
+    ip: "",
+    port_id: `${id}/01`,
+    online: false,
+  }));
+}
+
+function l2Reachable(from: string, to: string, links: ClaimedScreen["links"]): boolean {
+  if (from === to) {
+    return true;
+  }
+  const adj = new Map<string, Set<string>>();
+  const connect = (a: string, b: string) => {
+    if (!adj.has(a)) {
+      adj.set(a, new Set());
+    }
+    adj.get(a)!.add(b);
+  };
+  const ports = new Set<string>([from, to]);
+  for (const link of links) {
+    if (!link.physically_up) {
+      continue;
+    }
+    ports.add(link.port_a);
+    ports.add(link.port_b);
+    connect(link.port_a, link.port_b);
+    connect(link.port_b, link.port_a);
+  }
+  const groups = new Map<string, string[]>();
+  for (const portId of ports) {
+    const dev = portId.split("/")[0] || portId;
+    if (dev.startsWith("S") || dev.startsWith("TAP")) {
+      const list = groups.get(dev) || [];
+      list.push(portId);
+      groups.set(dev, list);
+    }
+  }
+  for (const siblings of groups.values()) {
+    for (let i = 0; i < siblings.length; i += 1) {
+      for (let j = i + 1; j < siblings.length; j += 1) {
+        connect(siblings[i], siblings[j]);
+        connect(siblings[j], siblings[i]);
+      }
+    }
+  }
+  const queue = [from];
+  const seen = new Set([from]);
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const next of adj.get(cur) || []) {
+      if (next === to) {
+        return true;
+      }
+      if (seen.has(next)) {
+        continue;
+      }
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+export function previewPcFrame(screen: ClaimedScreen, toIp: string, text: string): SimFrameView {
+  const port = screen.device.ports[0];
+  const srcIp = port?.ip || "";
+  const srcMac = (port?.mac || screen.device.mac || "??:??:??:??:??:??").toLowerCase();
+  const lookupIp = srcIp && sameCClass(srcIp, toIp) ? toIp : port?.gateway || toIp;
+  const arp = screen.arpTable.find((row) => row.device_id === screen.device.id && row.ip === lookupIp);
+  return {
+    frame_id: "preview",
+    dst_mac: (arp?.mac || "??:??:??:??:??:??").toLowerCase(),
+    src_mac: srcMac,
+    src_ip: srcIp,
+    dst_ip: toIp,
+    payload: text,
+    at_device_id: screen.device.id,
+    status: "inflight",
+    changed: [],
+    ingress: null,
+    at: 0,
+  };
+}
+
+export function renderComposeDialog(screen: ClaimedScreen, toIp: string, text: string): string {
+  const frame = previewPcFrame(screen, toIp, text);
+  return `
+    <div class="dlg-backdrop" data-open="true">
+      <form class="dlg compose-form">
+        <header class="dlg-hd"><h3>组帧发送</h3><button type="button" class="dlg-x" data-dlg-close>×</button></header>
+        <p class="dlg-sub">确认网络帧后再转发</p>
+        ${frameStrip(frame)}
+        <div class="dlg-actions">
+          <button type="button" data-dlg-close>取消</button>
+          <button type="submit">发送</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function sameCClass(a: string, b: string): boolean {
+  const left = a.split(".");
+  const right = b.split(".");
+  return (
+    left.length >= 3 &&
+    right.length >= 3 &&
+    left[0] === right[0] &&
+    left[1] === right[1] &&
+    left[2] === right[2]
+  );
+}
+
 export type LinuxPing = {
   header: string;
   replies: string[];
@@ -31,42 +217,38 @@ export type LinuxPing = {
 };
 
 export function linuxPing(toIp: string, reachable: boolean): LinuxPing {
-  const header = `PING ${toIp} (${toIp}) 56(84) bytes of data.`;
+  const header = `正在 Ping ${toIp} 具有 32 字节的数据:`;
   if (!reachable) {
     return {
       header,
-      replies: Array.from({ length: 5 }, (_, i) => `From ${toIp} icmp_seq=${i + 1} Destination Host Unreachable`),
+      replies: Array.from({ length: 4 }, () => `来自 ${toIp} 的回复: 无法访问目标主机。`),
       stats: [
-        `--- ${toIp} ping statistics ---`,
-        "5 packets transmitted, 0 received, 100% packet loss, time 4004ms",
+        `${toIp} 的 Ping 统计信息:`,
+        "    数据包: 已发送 = 4，已接收 = 0，丢失 = 4 (100% 丢失)，",
       ],
     };
   }
-  const times = [0.387, 0.412, 0.359, 0.441, 0.398];
+  const times = [1, 1, 2, 1];
   const min = Math.min(...times);
   const max = Math.max(...times);
-  const avg = times.reduce((sum, n) => sum + n, 0) / times.length;
-  const mdev = Math.sqrt(times.reduce((sum, n) => sum + (n - avg) ** 2, 0) / times.length);
+  const avg = Math.round(times.reduce((sum, n) => sum + n, 0) / times.length);
   return {
     header,
-    replies: times.map(
-      (ms, i) => `64 bytes from ${toIp}: icmp_seq=${i + 1} ttl=64 time=${ms.toFixed(3)} ms`,
-    ),
+    replies: times.map((ms) => `来自 ${toIp} 的回复: 字节=32 时间=${ms}ms TTL=128`),
     stats: [
-      `--- ${toIp} ping statistics ---`,
-      "5 packets transmitted, 5 received, 0% packet loss, time 4004ms",
-      `rtt min/avg/max/mdev = ${min.toFixed(3)}/${avg.toFixed(3)}/${max.toFixed(3)}/${mdev.toFixed(3)} ms`,
+      `${toIp} 的 Ping 统计信息:`,
+      "    数据包: 已发送 = 4，已接收 = 4，丢失 = 0 (0% 丢失)，",
+      "往返行程的估计时间(以毫秒为单位):",
+      `    最短 = ${min}ms，最长 = ${max}ms，平均 = ${avg}ms`,
     ],
   };
 }
 
-function pcBench(screen: ClaimedScreen, chatInStage: boolean): string {
-  const sim = screen.mode === "simulation";
+function pcBench(screen: ClaimedScreen, chatInStage: boolean, arpInStage: boolean): string {
   return `
     <section class="bench" data-role="pc">
       ${localNet(screen)}
-      ${arpTable(screen)}
-      ${sim ? frameCard(screen.frame, "pc") : ""}
+      ${arpInStage ? "" : arpTable(screen)}
       ${chatInStage ? "" : chatPanel(screen)}
       ${notice(screen.notice)}
     </section>
@@ -76,6 +258,7 @@ function pcBench(screen: ClaimedScreen, chatInStage: boolean): string {
 function localNet(screen: ClaimedScreen): string {
   const port = screen.device.ports[0];
   const ip = port?.ip || "—";
+  const mac = port?.mac || screen.device.mac || "—";
   const mask = port?.mask || "255.255.255.0";
   const gw = port?.gateway || "—";
   const portId = port?.id || "";
@@ -90,11 +273,12 @@ function localNet(screen: ClaimedScreen): string {
     <section class="local-net">
       <h2>本机网络信息</h2>
       <dl>
-        <div><dt>IP 地址</dt><dd>${escapeHtml(ip)}</dd></div>
-        <div><dt>子网掩码</dt><dd>${escapeHtml(mask)}</dd></div>
-        <div><dt>默认网关</dt><dd>${escapeHtml(gw)}</dd></div>
-        <div><dt>对端端口</dt><dd>${escapeHtml(peer)}${up ? " (已连接)" : ""}</dd></div>
-        <div><dt>网络</dt><dd>${up ? "网络正常" : "未连通"}</dd></div>
+        <div class="net-cell" data-k="ip"><span class="net-ico" aria-hidden="true"></span><div><dt>IP 地址</dt><dd>${escapeHtml(ip)}</dd></div></div>
+        <div class="net-cell" data-k="mac"><span class="net-ico" aria-hidden="true"></span><div><dt>MAC 地址</dt><dd>${escapeHtml(mac)}</dd></div></div>
+        <div class="net-cell" data-k="mask"><span class="net-ico" aria-hidden="true"></span><div><dt>子网掩码</dt><dd>${escapeHtml(mask)}</dd></div></div>
+        <div class="net-cell" data-k="gw"><span class="net-ico" aria-hidden="true"></span><div><dt>默认网关</dt><dd>${escapeHtml(gw)}</dd></div></div>
+        <div class="net-cell" data-k="peer"><span class="net-ico" aria-hidden="true"></span><div><dt>对端端口</dt><dd>${escapeHtml(peer)}${up ? " (已连接)" : ""}</dd></div></div>
+        <div class="net-cell" data-k="${up ? "up" : "down"}"><span class="net-ico" aria-hidden="true"></span><div><dt>网络</dt><dd>${up ? "网络正常" : "未连通"}</dd></div></div>
       </dl>
     </section>
   `;
@@ -191,7 +375,7 @@ function chatPanel(screen: ClaimedScreen): string {
   const peer = screen.chatPeerIp;
   const sim = screen.mode === "simulation";
   const fail = screen.chatError
-    ? `<p class="chat-fail">${escapeHtml(screen.chatError)}</p>`
+    ? `<li class="wx-row" data-dir="sent"><p class="chat-fail">${escapeHtml(screen.chatError)}</p></li>`
     : "";
   const modal = screen.chatPrompt
     ? `<div class="dlg-backdrop" data-open="true">
@@ -209,29 +393,44 @@ function chatPanel(screen: ClaimedScreen): string {
   const composer = peer
     ? `<form class="chat-form" data-mode="${sim ? "simulation" : "normal"}">
          <input type="hidden" name="to_ip" value="${escapeAttr(peer)}" />
-         <input name="text" required placeholder="发送消息" />
+         <input name="text" required placeholder="输入消息...（按 Enter 发送）" autocomplete="off" />
          <button type="submit">${sim ? "组帧发送" : "发送"}</button>
        </form>`
     : `<p class="wx-hint">点击发起聊天，输入对方 IP</p>`;
   const lines = screen.chatLog.length
     ? screen.chatLog
-        .map(
-          (line) =>
-            `<li class="wx-bubble" data-dir="${line.dir}"><span class="wx-meta">${escapeHtml(line.from_ip)} → ${escapeHtml(line.to_ip)}</span> ${escapeHtml(line.text)}</li>`,
-        )
+        .map((line) => {
+          const mine = line.dir === "sent";
+          const name = mine ? screen.device.id : line.from_ip;
+          const recFrame = !mine && sim ? line.frame : undefined;
+          const frameHtml = recFrame
+            ? `<div class="wx-frame" data-frame="${escapeAttr(recFrame.frame_id)}">${frameStrip(recFrame)}</div>`
+            : "";
+          return `<li class="wx-row" data-dir="${line.dir}"${recFrame ? ' data-has-frame="true"' : ""}>
+            <span class="wx-avatar" aria-hidden="true"></span>
+            <div class="wx-col">
+              <span class="wx-name">${escapeHtml(name)}</span>
+              <span class="wx-bubble"><span class="wx-text">${escapeHtml(line.text)}</span>${frameHtml}</span>
+            </div>
+          </li>`;
+        })
         .join("")
     : `<li class="empty">尚无对话</li>`;
+  const peerTitle = peer ? `与 ${escapeHtml(peer)} 的聊天` : "未选择对象";
   return `
     <div class="wx chat" data-window="dialog">
       <header class="wx-hd">
-        <h2>对话窗口</h2>
-        <p class="wx-peer">${peer ? escapeHtml(peer) : "未选择对象"}</p>
+        <span class="wx-ico" aria-hidden="true"></span>
+        <div class="wx-hd-copy">
+          <h2>对话窗口</h2>
+          <p class="wx-peer">${peerTitle}</p>
+        </div>
+        ${peer ? `<span class="wx-online">在线</span>` : ""}
         <button type="button" data-chat-start>发起聊天</button>
-        <button type="button" class="wx-ping" data-chat-ping ${peer ? "" : "disabled"}>ping</button>
+        <button type="button" class="wx-ping" data-chat-ping>ping</button>
       </header>
-      ${fail}
       ${modal}
-      <ol class="chat-log wx-log">${lines}</ol>
+      <ol class="chat-log wx-log">${lines}${fail}</ol>
       ${composer}
     </div>
   `;
@@ -269,7 +468,7 @@ function forwardForm(screen: ClaimedScreen): string {
          <tr><th>源 MAC</th><td>${escapeHtml(frame.src_mac)}</td></tr>
          <tr><th>源 IP</th><td>${escapeHtml(frame.src_ip)}</td></tr>
          <tr><th>目的 IP</th><td>${escapeHtml(frame.dst_ip)}</td></tr>
-         <tr><th>数据</th><td>${escapeHtml(frame.payload)}</td></tr>
+         <tr><th>数据</th><td>${escapeHtml(payloadSummary(frame.payload))}</td></tr>
        </table>`
     : "";
   return `
@@ -319,11 +518,11 @@ function frameCard(frame: SimFrameView | null, kind?: DeviceKind): string {
             : "";
   const packing =
     kind === "pc" && !delivered
-      ? `<div class="encap-plain" data-step="payload"><span class="encap-label">消息</span><span>${escapeHtml(frame.payload)}</span></div><p class="encap-arrow">打包</p>`
+      ? `<div class="encap-plain" data-step="payload"><span class="encap-label">消息</span><span>${escapeHtml(payloadSummary(frame.payload))}</span></div><p class="encap-arrow">打包</p>`
       : "";
   const unpack =
     kind === "pc" && delivered
-      ? `<p class="frame-message" data-part="message">消息：${escapeHtml(frame.payload)}</p>`
+      ? `<p class="frame-message" data-part="message">消息：${escapeHtml(payloadSummary(frame.payload))}</p>`
       : "";
   const routerSteps = kind === "router" ? routerFrameSteps(frame) : "";
   return `
@@ -360,7 +559,7 @@ function routerFrameSteps(frame: SimFrameView): string {
       <div class="frame-strip" data-part="network">
         <div class="frame-cell" data-field="src_ip"><span class="k">源 IP</span><span class="v">${escapeHtml(frame.src_ip)}</span></div>
         <div class="frame-cell" data-field="dst_ip"><span class="k">目的 IP</span><span class="v">${escapeHtml(frame.dst_ip)}</span></div>
-        <div class="frame-cell" data-field="payload" data-part="payload"><span class="k">数据</span><span class="v">${escapeHtml(frame.payload)}</span></div>
+        <div class="frame-cell" data-field="payload" data-part="payload"><span class="k">数据</span><span class="v">${escapeHtml(payloadSummary(frame.payload))}</span></div>
       </div>
     </div>
     <p class="encap-arrow">重新打包</p>
@@ -386,7 +585,7 @@ function frameStrip(frame: SimFrameView): string {
       ${cell("dst_ip", "目的 IP", frame.dst_ip)}
     </div>
     <div class="frame-strip payload-strip">
-      ${cell("payload", "数据", frame.payload, "payload")}
+      ${cell("payload", "数据", payloadSummary(frame.payload), "payload")}
     </div>
   `;
 }
@@ -412,8 +611,8 @@ function escapeAttr(text: string): string {
 }
 
 function payloadSummary(text: string): string {
-  const t = text.trim();
-  return t.length <= 48 ? t : `${t.slice(0, 48)}...`;
+  const t = text.trim().replace(/\s+/g, " ");
+  return t.length <= 24 ? t : `${t.slice(0, 24)}...`;
 }
 
 function formatStamp(at: number): string {

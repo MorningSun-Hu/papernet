@@ -4,6 +4,8 @@ import { CHASSIS, PC_BACK, PC_FRONT } from "@shared/models";
 
 export type StageAssets = {
   chatHtml?: string;
+  hostsHtml?: string;
+  arpHtml?: string;
 };
 
 export function renderStage(
@@ -21,7 +23,7 @@ export function renderStage(
     <section class="stage" data-kind="${model.kind}" data-overlay="${model.overlayCount}">
       ${
         model.kind === "pc"
-          ? pcStage(model, assets.chatHtml || "")
+          ? pcStage(model, assets.chatHtml || "", assets.hostsHtml || "", assets.arpHtml || "")
           : rackStage(model)
       }
       <svg class="wires" aria-hidden="true"></svg>
@@ -31,20 +33,26 @@ export function renderStage(
   return { html, model };
 }
 
-function pcStage(model: StageModel, chatHtml: string): string {
+function pcStage(model: StageModel, chatHtml: string, hostsHtml = "", arpHtml = ""): string {
   const port = model.ports[0];
   return `
     <figure class="pc-front photo-chassis">
       <img class="chassis-img" src="${PC_FRONT}" alt="机箱正面" />
+      <figcaption>高性能 · 稳定 · 探索无限</figcaption>
     </figure>
     <div class="pc-chat">${chatHtml}</div>
     <div class="canvas photo-chassis pc-back" aria-label="机箱背面">
       <img class="chassis-img" src="${PC_BACK}" alt="机箱背面" />
-      ${port ? portMarkup(port, true) : ""}
+      ${port ? portMarkup(port, true, "bot") : ""}
+      <p class="pc-back-cap">连接网络 · 通向更大的世界</p>
     </div>
-    <aside class="peers pc-peers">
-      <h2>对端主机信息</h2>
-      ${model.boxes.map((item) => boxMarkup(item)).join("") || `<p class="hint">暂无对端</p>`}
+    <div class="peers pc-logic">${port?.peerPortId ? boxMarkup(port, "bot") : ""}</div>
+    <aside class="pc-side">
+      <section class="pc-peers">
+        <h2>在线 PC</h2>
+        <div class="host-list">${hostsHtml || `<p class="hint">暂无可达主机</p>`}</div>
+      </section>
+      <section class="pc-arp">${arpHtml}</section>
     </aside>
   `;
 }
@@ -143,7 +151,7 @@ export function rememberPeerBox(portId: string, left: number, top: number): void
 
 export function placePeerBoxes(root: HTMLElement): void {
   const stage = root.querySelector<HTMLElement>(".stage");
-  if (!stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap")) {
+  if (!stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap" && stage.dataset.kind !== "pc")) {
     return;
   }
   const stageBox = stage.getBoundingClientRect();
@@ -176,7 +184,7 @@ export function layoutWires(root: HTMLElement): void {
   const svg = root.querySelector<SVGSVGElement>("svg.wires");
   const canvas = root.querySelector<HTMLElement>(".canvas");
   const stage = root.querySelector<HTMLElement>(".stage");
-  if (!svg || !canvas || !stage || stage.dataset.kind === "pc") {
+  if (!svg || !canvas || !stage) {
     if (svg) {
       svg.innerHTML = "";
     }

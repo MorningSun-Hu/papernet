@@ -12,6 +12,7 @@ import {
   studentClientFromSearch,
   studentUiUrl,
   targetClassroomInventory,
+  labTestInventory,
 } from "../web/shared/claim.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,8 +43,9 @@ assert.match(studentApi, /client\.kind/);
 assert.match(studentApi, /client\.nicMac/);
 
 const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), "utf8");
-assert.match(teacherMain, /target-scene/);
-assert.match(teacherMain, /targetClassroomInventory/);
+assert.match(teacherMain, /lab-test/);
+assert.match(teacherMain, /labTestInventory/);
+assert.match(teacherMain, /载入环境测试任务/);
 
 assert.equal(joinBody().client_kind, CLIENT_KIND_HOSTED);
 assert.equal(Object.hasOwn(joinBody(), "nic_mac"), false);
@@ -166,6 +168,33 @@ function hdr(conn, extra = {}) {
 }
 
 async function walkClassroom(base) {
+  const labCreated = await api(base, "POST", "/api/v1/classrooms", {
+    headers: { "x-client-kind": "teacher" },
+    body: {
+      title: "环境测试",
+      inventory: labTestInventory({
+        pcCount: 2,
+        switchCount: 2,
+        switchPorts: 4,
+        routerCount: 1,
+        routerPorts: 2,
+        tapCount: 0,
+      }),
+    },
+  });
+  assert.equal(labCreated.status, 200);
+  const labId = labCreated.json.data.classroom_id;
+  const labSnap = await api(base, "GET", `/api/v1/classrooms/${labId}/snapshot`, {
+    headers: { "x-client-kind": "teacher" },
+  });
+  assert.equal(labSnap.status, 200, JSON.stringify(labSnap.json));
+  assert.equal(labSnap.json.data.links.length, 4);
+  assert.ok(labSnap.json.data.links.every((l) => l.physically_up === true));
+  const labPc = labSnap.json.data.devices.find((d) => d.id === "PC1");
+  assert.equal(labPc.ports[0].ip, "192.168.1.10");
+  assert.equal(labPc.ports[0].gateway, "192.168.1.1");
+  assert.equal(labPc.ports[0].peer_port_id, "S1/02");
+
   const created = await api(base, "POST", "/api/v1/classrooms", {
     headers: { "x-client-kind": "teacher" },
     body: { title: "目标课堂", inventory: targetClassroomInventory() },

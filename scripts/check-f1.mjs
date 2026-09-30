@@ -12,6 +12,7 @@ import {
   documentTitle,
   formatClaimRoster,
   buildInventory,
+  labTestInventory,
   joinBody,
   screenFromHttp,
   wsPath,
@@ -168,6 +169,43 @@ assert.equal(inventory.routers[0].id, "R1");
 assert.equal(inventory.routers[0].port_count, 2);
 assert.equal(inventory.taps[0].id, "TAP1");
 
+const lab = labTestInventory({
+  pcCount: 2,
+  switchCount: 2,
+  switchPorts: 4,
+  routerCount: 1,
+  routerPorts: 2,
+  tapCount: 0,
+});
+assert.equal(lab.routers[0].ports[0].ip, "192.168.1.1");
+assert.equal(lab.routers[0].ports[1].ip, "192.168.2.1");
+assert.equal(lab.routers[0].ports[0].peer_port_id, "S1/01");
+assert.equal(lab.routers[0].ports[1].peer_port_id, "S2/01");
+assert.equal(lab.pcs[0].id, "PC1");
+assert.equal(lab.pcs[0].ip, "192.168.1.10");
+assert.equal(lab.pcs[0].gateway, "192.168.1.1");
+assert.equal(lab.pcs[0].peer_port_id, "S1/02");
+assert.equal(lab.pcs[1].ip, "192.168.2.10");
+assert.equal(lab.pcs[1].gateway, "192.168.2.1");
+assert.equal(lab.pcs[1].peer_port_id, "S2/02");
+const s1p01 = lab.switches[0].ports.find((x) => x.id === "S1/01");
+const s1p02 = lab.switches[0].ports.find((x) => x.id === "S1/02");
+assert.equal(s1p01.peer_port_id, "R1/01");
+assert.equal(s1p02.peer_port_id, "PC1/01");
+const filled = labTestInventory({
+  pcCount: 1,
+  switchCount: 1,
+  switchPorts: 4,
+  routerCount: 1,
+  routerPorts: 2,
+  tapCount: 0,
+  routerIps: ["10.0.0.1", ""],
+});
+assert.equal(filled.routers[0].ports[0].ip, "10.0.0.1");
+assert.equal(filled.routers[0].ports[1].ip, "192.168.1.1");
+assert.equal(filled.pcs[0].ip, "10.0.0.10");
+assert.equal(filled.pcs[0].gateway, "10.0.0.1");
+
 const studentMain = fs.readFileSync(path.join(root, "web/student/src/main.ts"), "utf8");
 assert.ok(studentMain.includes("MSG_WAITING_OPEN"));
 assert.ok(studentMain.includes("MSG_CLASSROOM_FULL"));
@@ -202,6 +240,9 @@ assert.ok(teacherMain.includes("开放领取"));
 assert.ok(teacherMain.includes("结束课堂"));
 assert.equal(teacherMain.includes("@icons/"), false);
 assert.ok(teacherMain.includes("确定本课设备"));
+assert.ok(teacherMain.includes("载入环境测试任务"));
+assert.equal(teacherMain.includes("载入目标课堂"), false);
+assert.ok(teacherMain.includes("labTestInventory"));
 
 assert.ok(teacherMain.includes("formatClaimRoster"));
 

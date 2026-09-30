@@ -1,5 +1,5 @@
 import "./style.css";
-import { buildInventory, formatClaimRoster, targetClassroomInventory, wsPath } from "@shared/claim";
+import { buildInventory, formatClaimRoster, labTestInventory, wsPath } from "@shared/claim";
 import { brandLockup, hudClock } from "@shared/brand";
 import { applyTopoEvent, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
 import { attachTap, clearClassroomId, createClassroom, endClassroom, fetchCurrentClassroomId, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
@@ -42,7 +42,7 @@ let claimState = classroomId ? "draft" : "";
 let notice = "";
 let snap: TopoSnapshot | null = null;
 let socket: WebSocket | null = null;
-let targetScene = false;
+let labTestMode = false;
 let menu: { x: number; y: number; deviceId: string } | null = null;
 let layout: TopoLayout = {};
 let lastView: TopoView | null = null;
@@ -168,7 +168,7 @@ function rosterDialog(): string {
         </section>
         <p class="status" data-claim="${escapeAttr(claimState)}">${statusLine()}</p>
         <div class="dlg-actions">
-          <button type="button" id="target-scene">载入目标课堂</button>
+          <button type="button" id="lab-test">载入环境测试任务</button>
           <button type="submit" id="create">创建课堂</button>
         </div>
       </form>
@@ -274,7 +274,7 @@ function claimToggle(): string {
   if (claimState === "open") {
     return `<button type="button" id="pause"${full ? " disabled" : ""}>暂停领取</button>`;
   }
-  return `<button type="button" id="open"${full ? " disabled" : ""}>开放领取</button>`;
+  return `<button type="button" id="open"${full || labTestMode ? " disabled" : ""}>开放领取</button>`;
 }
 
 function tapBar(): string {
@@ -337,9 +337,10 @@ function bind(): void {
       classroomId = await createClassroom(
         form.title,
         form,
-        targetScene ? targetClassroomInventory() : inventoryFromForm(),
+        inventoryFromForm(),
       );
       claimState = "draft";
+      labTestMode = false;
       await loadSnap();
     } catch (err) {
       notice = err instanceof Error ? err.message : "创建课堂失败";
@@ -382,17 +383,22 @@ function bind(): void {
       render();
     });
   }
-  document.querySelector<HTMLButtonElement>("#target-scene")?.addEventListener("click", () => {
-    form.title = "目标课堂";
-    form.pcCount = 2;
-    form.switchCount = 2;
-    form.switchPorts = 2;
-    form.routerCount = 1;
-    form.routerPorts = 2;
-    form.tapCount = 0;
-    form.routerIps = [];
-    targetScene = true;
-    notice = "已载入目标课堂：PCA — S1 — R1 — S2 — PCB";
+  document.querySelector<HTMLButtonElement>("#lab-test")?.addEventListener("click", async () => {
+    const rosterEl = document.querySelector<HTMLFormElement>("#roster");
+    if (rosterEl) {
+      clampRosterInputs(rosterEl, true);
+      syncRosterForm(rosterEl);
+    }
+    notice = "";
+    try {
+      classroomId = await createClassroom(form.title, form, labTestInventory(form));
+      claimState = await openClaim(classroomId);
+      labTestMode = true;
+      notice = "已载入环境测试任务，领取已开放。";
+      await loadSnap();
+    } catch (err) {
+      notice = err instanceof Error ? err.message : "载入环境测试任务失败";
+    }
     render();
   });
   document.querySelector<HTMLButtonElement>("#end")?.addEventListener("click", async () => {
@@ -409,6 +415,7 @@ function bind(): void {
       layout = {};
       railOpen = "claim";
       claimFoldedByFull = false;
+      labTestMode = false;
       if (socket) {
         socket.onclose = null;
         socket.close();
@@ -491,7 +498,6 @@ function syncRosterForm(roster: HTMLFormElement): void {
   form.routerIps = Array.from({ length: Math.max(1, form.routerPorts) }, (_, i) =>
     String(data.get(`router_ip_${i}`) || ""),
   );
-  targetScene = false;
 }
 
 function inventoryFromForm() {

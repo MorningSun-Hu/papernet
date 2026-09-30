@@ -350,6 +350,7 @@ async fn put_port(
         "links": patch["links"],
         "mac_table": patch["mac_table"],
         "arp_table": patch["arp_table"],
+        "pc_hosts": patch["pc_hosts"],
     });
     if let Ok(hub) = state.hub.lock() {
         hub.broadcast(event.clone());

@@ -56,11 +56,19 @@ export type ArpEntry = {
   mac: string;
 };
 
+export type PcHost = {
+  id: string;
+  ip: string;
+  port_id: string;
+  online: boolean;
+};
+
 export type ChatLine = {
   from_ip: string;
   to_ip: string;
   text: string;
   dir: "sent" | "received";
+  frame?: SimFrameView;
 };
 
 export type SimFrameView = {
@@ -86,6 +94,7 @@ export type ClaimedScreen = {
   mode: "normal" | "simulation";
   macTable: MacEntry[];
   arpTable: ArpEntry[];
+  pcHosts: PcHost[];
   chatLog: ChatLine[];
   pingDetail: string;
   notice: string;
@@ -268,9 +277,10 @@ export function screenFromHttp(httpStatus: number, body: unknown): Screen {
       mode: str(data.mode) === "simulation" ? "simulation" : "normal",
       macTable: parseMacTable(data.mac_table),
       arpTable: parseArpTable(data.arp_table),
+      pcHosts: parsePcHosts(data.pc_hosts),
       tapAttach: parseTapAttach(data.tap_attach),
       tapLog: parseTapLog(data.tap_log),
-      chatLog: parseChatLog(data.chat, device),
+      chatLog: bindChatFrames(parseChatLog(data.chat, device), frames),
       frame: frames[0] ?? null,
       frameQueue: frames.slice(1),
     };
@@ -341,6 +351,7 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
       links: next.links,
       macTable: Array.isArray(root.mac_table) ? parseMacTable(root.mac_table) : screen.macTable,
       arpTable: Array.isArray(root.arp_table) ? parseArpTable(root.arp_table) : screen.arpTable,
+      pcHosts: Array.isArray(root.pc_hosts) ? parsePcHosts(root.pc_hosts) : screen.pcHosts,
       tapAttach:
         root.tap_attach != null ? mergeTapAttach(screen.tapAttach, root.tap_attach) : screen.tapAttach,
     };
@@ -417,6 +428,7 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
         to_ip: nextFrame.dst_ip,
         text: nextFrame.payload,
         dir: "received" as const,
+        frame: nextFrame,
       };
       const dup = screen.chatLog.some(
         (row) =>
@@ -499,6 +511,7 @@ export function blankClaimed(
     mode: "normal",
     macTable: [],
     arpTable: [],
+    pcHosts: [],
     chatLog: [],
     pingDetail: "",
     notice: "",
@@ -551,6 +564,7 @@ export type InventoryForm = {
   routerCount: number;
   routerPorts: number;
   tapCount: number;
+  routerIps?: string[];
 };
 
 export function buildInventory(form: InventoryForm) {
@@ -566,6 +580,187 @@ export function buildInventory(form: InventoryForm) {
     pcs: numbered("PC", form.pcCount).map((id) => ({ id })),
     taps: numbered("TAP", form.tapCount).map((id) => ({ id })),
   };
+}
+
+function portIdOf(deviceId: string, n: number): string {
+  return `${deviceId}/${String(n).padStart(2, "0")}`;
+}
+
+function parseIpv4(raw: string): [number, number, number, number] | null {
+  const parts = raw.trim().split(".");
+  if (parts.length !== 4) {
+    return null;
+  }
+  const oct = parts.map((p) => Number(p));
+  if (oct.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return null;
+  }
+  return oct as [number, number, number, number];
+}
+
+function autoGateway(usedThirds: Set<number>): string {
+  for (let third = 1; third <= 254; third += 1) {
+    if (!usedThirds.has(third)) {
+      usedThirds.add(third);
+      return `192.168.${third}.1`;
+    }
+  }
+  usedThirds.add(1);
+  return "192.168.1.1";
+}
+
+function hostIp(gateway: string, index: number): string {
+  const oct = parseIpv4(gateway) ?? [192, 168, 1, 1];
+  let host = 10 + index;
+  while (host === oct[3] || host === 0 || host === 255) {
+    host += 1;
+    if (host > 254) {
+      host = 2;
+    }
+  }
+  return `${oct[0]}.${oct[1]}.${oct[2]}.${host}`;
+}
+
+export function labTestInventory(form: InventoryForm) {
+  const base = buildInventory(form);
+  const routerIps = form.routerIps ?? [];
+  const usedThirds = new Set<number>();
+  type RPort = { id: string; ip: string; peer_port_id?: string };
+  const routers = base.routers.map((router, ri) => {
+    const ports: RPort[] = Array.from({ length: router.port_count }, (_, i) => {
+      const id = portIdOf(router.id, i + 1);
+      const filled = ri === 0 ? (routerIps[i] || "").trim() : "";
+      const parsed = parseIpv4(filled);
+      let ip: string;
+      if (parsed) {
+        ip = filled;
+        usedThirds.add(parsed[2]);
+      } else {
+        ip = autoGateway(usedThirds);
+      }
+      return { id, ip };
+    });
+    return { id: router.id, port_count: router.port_count, ports };
+  });
+  const lans = routers.flatMap((r) =>
+    r.ports.map((p) => ({
+      routerId: r.id,
+      port: p,
+    })),
+  );
+  const switchIds = base.switches.map((s) => s.id);
+  const switchPortCount = Math.max(1, form.switchPorts);
+  const nextFree = new Map(switchIds.map((id) => [id, 1]));
+  const switchPeer = new Map<string, Map<number, string>>();
+  function takePort(swId: string): number | null {
+    const n = nextFree.get(swId) ?? 1;
+    if (n > switchPortCount) {
+      return null;
+    }
+    nextFree.set(swId, n + 1);
+    return n;
+  }
+  function linkSwitch(swId: string, n: number, peer: string) {
+    if (!switchPeer.has(swId)) {
+      switchPeer.set(swId, new Map());
+    }
+    switchPeer.get(swId)!.set(n, peer);
+  }
+  function setRouterPeer(portId: string, peer: string) {
+    for (const r of routers) {
+      const p = r.ports.find((x) => x.id === portId);
+      if (p) {
+        p.peer_port_id = peer;
+      }
+    }
+  }
+  const lanSwitches: string[][] = lans.map(() => []);
+  if (lans.length && switchIds.length) {
+    const paired = Math.min(lans.length, switchIds.length);
+    for (let i = 0; i < paired; i += 1) {
+      const swId = switchIds[i];
+      const n = takePort(swId);
+      if (!n) {
+        continue;
+      }
+      linkSwitch(swId, n, lans[i].port.id);
+      setRouterPeer(lans[i].port.id, portIdOf(swId, n));
+      lanSwitches[i].push(swId);
+    }
+    for (let i = paired; i < switchIds.length; i += 1) {
+      const lanIndex = (i - paired) % Math.max(1, lans.length);
+      const uplinkSw = lanSwitches[lanIndex][0] ?? switchIds[0];
+      const extra = switchIds[i];
+      const a = takePort(uplinkSw);
+      const b = takePort(extra);
+      if (a && b) {
+        linkSwitch(uplinkSw, a, portIdOf(extra, b));
+        linkSwitch(extra, b, portIdOf(uplinkSw, a));
+      }
+      lanSwitches[lanIndex].push(extra);
+    }
+  } else if (!lans.length && switchIds.length > 1) {
+    for (let i = 1; i < switchIds.length; i += 1) {
+      const a = takePort(switchIds[0]);
+      const b = takePort(switchIds[i]);
+      if (a && b) {
+        linkSwitch(switchIds[0], a, portIdOf(switchIds[i], b));
+        linkSwitch(switchIds[i], b, portIdOf(switchIds[0], a));
+      }
+    }
+  }
+  type PcRow = { id: string; ip?: string; gateway?: string; peer_port_id?: string };
+  const pcs: PcRow[] = base.pcs.map((pc) => ({ id: pc.id }));
+  const lanHost = lans.map(() => 0);
+  function accessPeer(lanIndex: number, pcPort: string): string | undefined {
+    const group = lanSwitches[lanIndex] ?? [];
+    for (const swId of group) {
+      const n = takePort(swId);
+      if (n) {
+        linkSwitch(swId, n, pcPort);
+        return portIdOf(swId, n);
+      }
+    }
+    const lan = lans[lanIndex];
+    if (lan && !lan.port.peer_port_id) {
+      setRouterPeer(lan.port.id, pcPort);
+      return lan.port.id;
+    }
+    return undefined;
+  }
+  if (lans.length) {
+    pcs.forEach((pc, i) => {
+      const lanIndex = i % lans.length;
+      const lan = lans[lanIndex];
+      const idx = lanHost[lanIndex]++;
+      pc.ip = hostIp(lan.port.ip, idx);
+      pc.gateway = lan.port.ip;
+      pc.peer_port_id = accessPeer(lanIndex, portIdOf(pc.id, 1));
+    });
+  } else {
+    pcs.forEach((pc, i) => {
+      pc.ip = hostIp("192.168.1.1", i);
+      if (switchIds[0]) {
+        const n = takePort(switchIds[0]);
+        if (n) {
+          linkSwitch(switchIds[0], n, portIdOf(pc.id, 1));
+          pc.peer_port_id = portIdOf(switchIds[0], n);
+        }
+      } else if (i % 2 === 1) {
+        const prev = pcs[i - 1];
+        prev.peer_port_id = portIdOf(pc.id, 1);
+        pc.peer_port_id = portIdOf(prev.id, 1);
+      }
+    });
+  }
+  const switches = base.switches.map((sw) => ({
+    id: sw.id,
+    port_count: sw.port_count,
+    ports: [...(switchPeer.get(sw.id)?.entries() ?? [])]
+      .sort((a, b) => a[0] - b[0])
+      .map(([n, peer]) => ({ id: portIdOf(sw.id, n), peer_port_id: peer })),
+  }));
+  return { routers, switches, pcs, taps: base.taps };
 }
 
 export function targetClassroomInventory() {
@@ -673,6 +868,23 @@ function parseMacTable(raw: unknown): MacEntry[] {
     .filter((row) => row.switch_id && row.port_id && row.mac);
 }
 
+function parsePcHosts(raw: unknown): PcHost[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      const rec = asRecord(item);
+      return {
+        id: str(rec.id),
+        ip: str(rec.ip),
+        port_id: str(rec.port_id),
+        online: rec.online === true,
+      };
+    })
+    .filter((row) => row.id);
+}
+
 function parseArpTable(raw: unknown): ArpEntry[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -765,6 +977,31 @@ function parseTapLog(raw: unknown): SimFrameView[] {
       return parseFrame(item);
     })
     .filter((row): row is SimFrameView => row != null);
+}
+
+function bindChatFrames(log: ChatLine[], frames: SimFrameView[]): ChatLine[] {
+  const delivered = frames.filter((frame) => frame.status === "delivered");
+  if (!delivered.length) {
+    return log;
+  }
+  const used = new Set<string>();
+  return log.map((line) => {
+    if (line.dir !== "received" || line.frame) {
+      return line;
+    }
+    const hit = delivered.find(
+      (frame) =>
+        !used.has(frame.frame_id) &&
+        frame.payload === line.text &&
+        frame.src_ip === line.from_ip &&
+        frame.dst_ip === line.to_ip,
+    );
+    if (!hit) {
+      return line;
+    }
+    used.add(hit.frame_id);
+    return { ...line, frame: hit };
+  });
 }
 
 function parseChatLog(raw: unknown, device: Device): ChatLine[] {

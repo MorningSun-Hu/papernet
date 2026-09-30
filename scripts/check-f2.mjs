@@ -52,8 +52,8 @@ const pcStage = buildStage(
 assert.equal(pcStage.ports.length, 1);
 assert.equal(pcStage.overlayCount, 1);
 assert.equal(pcStage.ports[0].overlay, true);
-assert.equal(pcStage.ports[0].x, 63);
-assert.equal(pcStage.ports[0].y, 43);
+assert.equal(pcStage.ports[0].x, 22.7);
+assert.equal(pcStage.ports[0].y, 72.8);
 assert.equal(switchChassisKind(8), "switch");
 assert.equal(switchChassisKind(24), "switch-many");
 

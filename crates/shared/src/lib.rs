@@ -193,15 +193,23 @@ pub struct RouterSpec {
     pub ports: Vec<PortSpec>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SwitchSpec {
     pub id: String,
     pub port_count: u32,
+    #[serde(default)]
+    pub ports: Vec<PortSpec>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PcSpec {
     pub id: String,
+    #[serde(default)]
+    pub ip: Option<String>,
+    #[serde(default)]
+    pub gateway: Option<String>,
+    #[serde(default)]
+    pub peer_port_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,11 +217,15 @@ pub struct TapSpec {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortSpec {
     pub id: String,
     #[serde(default)]
     pub ip: Option<String>,
+    #[serde(default)]
+    pub peer_port_id: Option<String>,
+    #[serde(default)]
+    pub gateway: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,6 +312,29 @@ pub struct MaterializedDevice {
     pub ports: Vec<MaterializedPort>,
 }
 
+fn nonempty_opt(v: &Option<String>) -> Option<String> {
+    v.as_ref().and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    })
+}
+
+fn apply_port_preset(port: &mut MaterializedPort, preset: &PortSpec) {
+    if let Some(ip) = nonempty_opt(&preset.ip) {
+        port.ip = Some(ip);
+    }
+    if let Some(gw) = nonempty_opt(&preset.gateway) {
+        port.gateway = Some(gw);
+    }
+    if let Some(peer) = nonempty_opt(&preset.peer_port_id) {
+        port.peer_port_id = Some(peer);
+    }
+}
+
 fn numbered_ports(device_id: &str, count: u32, with_mac: bool) -> Vec<MaterializedPort> {
     (1..=count)
         .map(|i| MaterializedPort {
@@ -325,7 +360,7 @@ pub fn materialize_inventory(inv: &Inventory) -> Vec<MaterializedDevice> {
         let mut ports = numbered_ports(&spec.id, count, true);
         for preset in &spec.ports {
             if let Some(port) = ports.iter_mut().find(|p| p.id == preset.id) {
-                port.ip = preset.ip.clone();
+                apply_port_preset(port, preset);
             }
         }
         out.push(MaterializedDevice {
@@ -336,19 +371,37 @@ pub fn materialize_inventory(inv: &Inventory) -> Vec<MaterializedDevice> {
         });
     }
     for spec in &inv.switches {
+        let mut ports = numbered_ports(&spec.id, spec.port_count, false);
+        for preset in &spec.ports {
+            if let Some(port) = ports.iter_mut().find(|p| p.id == preset.id) {
+                apply_port_preset(port, preset);
+            }
+        }
         out.push(MaterializedDevice {
             id: spec.id.clone(),
             kind: DeviceKind::Switch,
             mac: None,
-            ports: numbered_ports(&spec.id, spec.port_count, false),
+            ports,
         });
     }
     for spec in &inv.pcs {
+        let mut ports = numbered_ports(&spec.id, 1, false);
+        if let Some(port) = ports.get_mut(0) {
+            if let Some(ip) = nonempty_opt(&spec.ip) {
+                port.ip = Some(ip);
+            }
+            if let Some(gw) = nonempty_opt(&spec.gateway) {
+                port.gateway = Some(gw);
+            }
+            if let Some(peer) = nonempty_opt(&spec.peer_port_id) {
+                port.peer_port_id = Some(peer);
+            }
+        }
         out.push(MaterializedDevice {
             id: spec.id.clone(),
             kind: DeviceKind::Pc,
             mac: None,
-            ports: numbered_ports(&spec.id, 1, false),
+            ports,
         });
     }
     for spec in &inv.taps {
@@ -390,6 +443,7 @@ mod tests {
                 ports: vec![PortSpec {
                     id: "R1/01".into(),
                     ip: Some("192.168.1.1".into()),
+                    ..Default::default()
                 }],
             }],
             ..Default::default()
@@ -399,6 +453,55 @@ mod tests {
         assert_eq!(devices[0].ports[0].ip.as_deref(), Some("192.168.1.1"));
         assert_eq!(devices[0].ports[1].id, "R1/02");
         assert!(devices[0].ports[0].mac.is_some());
+    }
+
+    #[test]
+    fn materialize_writes_peer_and_pc_ip() {
+        let inv = Inventory {
+            routers: vec![RouterSpec {
+                id: "R1".into(),
+                port_count: 1,
+                ports: vec![PortSpec {
+                    id: "R1/01".into(),
+                    ip: Some("192.168.1.1".into()),
+                    peer_port_id: Some("S1/01".into()),
+                    ..Default::default()
+                }],
+            }],
+            switches: vec![SwitchSpec {
+                id: "S1".into(),
+                port_count: 2,
+                ports: vec![
+                    PortSpec {
+                        id: "S1/01".into(),
+                        peer_port_id: Some("R1/01".into()),
+                        ..Default::default()
+                    },
+                    PortSpec {
+                        id: "S1/02".into(),
+                        peer_port_id: Some("PC1/01".into()),
+                        ..Default::default()
+                    },
+                ],
+            }],
+            pcs: vec![PcSpec {
+                id: "PC1".into(),
+                ip: Some("192.168.1.10".into()),
+                gateway: Some("192.168.1.1".into()),
+                peer_port_id: Some("S1/02".into()),
+            }],
+            ..Default::default()
+        };
+        let devices = materialize_inventory(&inv);
+        let router = devices.iter().find(|d| d.id == "R1").unwrap();
+        let switch = devices.iter().find(|d| d.id == "S1").unwrap();
+        let pc = devices.iter().find(|d| d.id == "PC1").unwrap();
+        assert_eq!(router.ports[0].peer_port_id.as_deref(), Some("S1/01"));
+        assert_eq!(switch.ports[0].peer_port_id.as_deref(), Some("R1/01"));
+        assert_eq!(switch.ports[1].peer_port_id.as_deref(), Some("PC1/01"));
+        assert_eq!(pc.ports[0].ip.as_deref(), Some("192.168.1.10"));
+        assert_eq!(pc.ports[0].gateway.as_deref(), Some("192.168.1.1"));
+        assert_eq!(pc.ports[0].peer_port_id.as_deref(), Some("S1/02"));
     }
 
     #[test]

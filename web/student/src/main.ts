@@ -2,7 +2,6 @@ import "./style.css";
 import {
   applyChatError,
   applyNotice,
-  applyPingDetail,
   applyWsEvent,
   currentStudentClient,
   documentTitle,
@@ -16,7 +15,7 @@ import {
   wsPath,
   type Screen,
 } from "@shared/claim";
-import { linuxPing, renderPcChat, renderWorkbench, withoutTapPorts } from "@shared/workbench";
+import { linuxPing, renderArpTable, renderComposeDialog, renderPcChat, renderPcHosts, renderWorkbench, withoutTapPorts } from "@shared/workbench";
 import { brandLockup, hudClock, studentNav } from "@shared/brand";
 import {
   ApiError,
@@ -53,6 +52,9 @@ let pingIp = "";
 let pingLines: string[] = [];
 let pingRunning = false;
 let pingTimer: number | null = null;
+let composeOpen = false;
+let composeToIp = "";
+let composeText = "";
 
 type PortDraft = {
   portId: string;
@@ -164,6 +166,8 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
     s.links,
     {
       chatHtml: isPc ? renderPcChat(s) : undefined,
+      hostsHtml: isPc ? renderPcHosts(s) : undefined,
+      arpHtml: isPc ? renderArpTable(s) : undefined,
     },
     selectedPortId,
     withoutTapPorts(peers.filter((id) => !id.startsWith(`${s.device.id}/`))),
@@ -179,12 +183,14 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         <span class="hud-user">学生</span>
       </header>
       <h1 class="hero-title">${escapeHtml(s.device.kind === "pc" ? "主机" : ROLE_LABEL[s.device.kind])} ${escapeHtml(s.device.id)} <span class="mode-pill" data-mode="${s.mode}">${s.mode === "simulation" ? "模拟" : "普通"}</span></h1>
+      ${isPc ? `<p class="hero-sub">动手实验 · 理解网络 · 从这里开始</p>` : ""}
       <div class="lab">
         ${statusAside(s)}
         ${stage.html}
-        ${renderWorkbench(s, { chatInStage: isPc })}
+        ${renderWorkbench(s, { chatInStage: isPc, arpInStage: isPc })}
       </div>
       ${routerPingDialog(s)}
+      ${isPc && composeOpen ? renderComposeDialog(s, composeToIp, composeText) : ""}
       ${switchNotice(s)}
       <footer class="hud-foot">
         ${brandLockup()}
@@ -266,7 +272,7 @@ function playPing(toIp: string, reachable: boolean): void {
 }
 
 function routerPingDialog(s: Extract<Screen, { kind: "claimed" }>): string {
-  if (!pingOpen || s.device.kind !== "router") {
+  if (!pingOpen || (s.device.kind !== "router" && s.device.kind !== "pc")) {
     return "";
   }
   const out = pingLines.length ? `<pre class="ping-out">${escapeHtml(pingLines.join("\n"))}</pre>` : "";
@@ -274,7 +280,7 @@ function routerPingDialog(s: Extract<Screen, { kind: "claimed" }>): string {
     <div class="dlg-backdrop" data-open="true">
       <form class="dlg router-ping-form">
         <header class="dlg-hd"><h3>ping</h3><button type="button" class="dlg-x" data-dlg-close>×</button></header>
-        <p class="dlg-sub">填写目标 IP，发送 5 个探测包</p>
+        <p class="dlg-sub">填写目标 IP，发送 4 个探测包</p>
         <label>目标 IP <input name="to_ip" value="${escapeHtml(pingIp)}" required ${pingRunning ? "readonly" : ""} /></label>
         <div class="dlg-actions">
           <button type="submit" class="status-ping" ${pingRunning ? "disabled" : ""}>ping</button>
@@ -521,6 +527,11 @@ app.addEventListener("click", (ev) => {
       render();
       return;
     }
+    if (composeOpen) {
+      composeOpen = false;
+      render();
+      return;
+    }
     if (screen.kind === "claimed" && screen.chatPrompt) {
       setScreen({ ...screen, chatPrompt: false });
       return;
@@ -544,22 +555,11 @@ app.addEventListener("click", (ev) => {
     return;
   }
   if (target.closest("[data-chat-ping]") && screen.kind === "claimed") {
-    const toIp = screen.chatPeerIp;
-    if (!toIp) {
-      return;
-    }
-    void sendPing(screen.connectionId, toIp)
-      .then((res) => {
-        setScreen(applyPingDetail(screen, res.detail));
-      })
-      .catch((err) => {
-        const unreachable = err instanceof ApiError && err.code === "UNREACHABLE";
-        setScreen(
-          unreachable
-            ? applyChatError(screen, MSG_CHAT_UNREACHABLE)
-            : applyNotice(screen, err instanceof ApiError ? err.message : "ping 失败"),
-        );
-      });
+    pingOpen = true;
+    pingRunning = false;
+    pingLines = [];
+    pingIp = screen.chatPeerIp || pingIp;
+    render();
     return;
   }
   const btn = target.closest<HTMLElement>(".port");
@@ -611,14 +611,46 @@ app.addEventListener("submit", (ev) => {
   if (screen.kind !== "claimed") {
     return;
   }
+  if (form.classList.contains("compose-form")) {
+    ev.preventDefault();
+    const toIp = composeToIp;
+    const text = composeText;
+    if (!toIp || !text) {
+      return;
+    }
+    const conn = screen.connectionId;
+    composeOpen = false;
+    void simSend(conn, toIp, text)
+      .then((body) => {
+        const rec = body as { frame?: unknown };
+        if (rec.frame) {
+          setScreen(applyWsEvent(screen, { event: "frame.built", frame: rec.frame }));
+        }
+      })
+      .catch((err) => {
+        const unreachable = err instanceof ApiError && err.code === "UNREACHABLE";
+        setScreen(
+          unreachable
+            ? applyChatError(screen, MSG_CHAT_UNREACHABLE)
+            : applyNotice(screen, err instanceof ApiError ? err.message : "发送失败"),
+        );
+      });
+    return;
+  }
   if (form.classList.contains("chat-form")) {
     ev.preventDefault();
     const data = new FormData(form);
     const toIp = String(data.get("to_ip") || "");
     const text = String(data.get("text") || "");
+    if (screen.mode === "simulation") {
+      composeToIp = toIp;
+      composeText = text;
+      composeOpen = true;
+      render();
+      return;
+    }
     const conn = screen.connectionId;
-    const req =
-      screen.mode === "simulation" ? simSend(conn, toIp, text) : sendChat(conn, toIp, text);
+    const req = sendChat(conn, toIp, text);
     void req
       .then((body) => {
         const rec = body as { frame?: unknown };
@@ -743,7 +775,7 @@ app.addEventListener("pointerdown", (ev) => {
   }
   const box = t.closest<HTMLElement>(".peer-box");
   const stage = app.querySelector<HTMLElement>(".stage");
-  if (!box?.dataset.port || !stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap")) {
+  if (!box?.dataset.port || !stage || (stage.dataset.kind !== "switch" && stage.dataset.kind !== "router" && stage.dataset.kind !== "tap" && stage.dataset.kind !== "pc")) {
     return;
   }
   ev.preventDefault();
