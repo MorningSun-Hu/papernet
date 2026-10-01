@@ -144,12 +144,23 @@ const sim = applyTopoEvent(snap, { event: "mode.changed", mode: "simulation" });
 assert.equal(sim.mode, "simulation");
 
 const canvasSrc = fs.readFileSync(path.join(root, "web/teacher/src/canvas.ts"), "utf8");
+assert.match(canvasSrc, /topo-wires/);
+assert.match(canvasSrc, /topo-nodes/);
 assert.match(canvasSrc, /data-claimed/);
 assert.match(canvasSrc, /model-img/);
 assert.match(canvasSrc, /TOPO_MODEL/);
 const modelsSrc = fs.readFileSync(path.join(root, "web/shared/models.ts"), "utf8");
 assert.match(modelsSrc, /topo-switch-icon\.svg/);
 assert.match(modelsSrc, /topo-pc\.svg/);
+const teacherCss = fs.readFileSync(path.join(root, "web/teacher/src/style.css"), "utf8");
+assert.match(teacherCss, /\.topo-wires {[^}]*z-index:\s*0/);
+assert.match(teacherCss, /\.topo-nodes {[^}]*z-index:\s*1/);
+for (const name of ["topo-pc.svg", "topo-switch-icon.svg", "topo-router.svg", "topo-tap.svg"]) {
+  const svg = fs.readFileSync(path.join(root, "assets/models", name), "utf8");
+  assert.match(svg, /linearGradient/);
+  assert.match(svg, /stroke-width="5/);
+}
+assert.match(fs.readFileSync(path.join(root, "assets/models/topo-router.svg"), "utf8"), /aria-label="路由器"/);
 assert.equal(canvasSrc.includes("logical/switch.svg"), false);
 assert.match(canvasSrc, /data-topo-zoom/);
 assert.match(canvasSrc, /整理/);
