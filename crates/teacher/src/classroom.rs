@@ -76,6 +76,7 @@ pub enum PortError {
     UnknownPort,
     UnknownPeer,
     PortBusy,
+    IpConflict { occupied_by: String },
 }
 
 #[derive(Debug)]
@@ -453,6 +454,19 @@ impl Classroom {
         if let Some(ip) = patch.ip.as_deref() {
             if parse_ipv4(ip).is_none() {
                 return Err(PortError::BadIp);
+            }
+            let parsed = parse_ipv4(ip);
+            for device in self.devices.values() {
+                for p in &device.ports {
+                    if p.id == port_id {
+                        continue;
+                    }
+                    if p.ip.as_deref().and_then(parse_ipv4) == parsed {
+                        return Err(PortError::IpConflict {
+                            occupied_by: p.id.clone(),
+                        });
+                    }
+                }
             }
         }
         if let Some(gw) = patch.gateway.as_deref() {

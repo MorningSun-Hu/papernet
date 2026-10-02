@@ -1006,6 +1006,9 @@ fn port_err(err: PortError) -> (StatusCode, Json<Value>) {
         PortError::UnknownPort => not_found("NOT_FOUND", "端口不存在"),
         PortError::UnknownPeer => bad_request("BAD_REQUEST", "对端端口不存在"),
         PortError::PortBusy => conflict("PORT_BUSY", "端口已被占用"),
+        PortError::IpConflict { occupied_by } => {
+            conflict("IP_CONFLICT", &format!("该 IP 已被 {occupied_by} 使用"))
+        }
     }
 }
 

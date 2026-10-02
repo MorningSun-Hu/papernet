@@ -600,3 +600,96 @@ async fn rejoin_returns_links_mode_and_tap_attach() {
     assert_eq!(hello_v["mode"], "normal");
     assert_eq!(hello_v["tap_attach"][0]["tap_id"], "TAP1");
 }
+
+#[tokio::test]
+async fn duplicate_port_ip_is_rejected() {
+    let (state, _dir) = state();
+    let (_, created) = send(
+        state.clone(),
+        "POST",
+        "/api/v1/classrooms",
+        &[],
+        Some(json!({
+            "title": "IP冲突",
+            "inventory": {
+                "routers": [{"id": "R1", "port_count": 1, "ports": [
+                    {"id": "R1/01", "ip": "192.168.1.1"}
+                ]}],
+                "switches": [{"id": "S1", "port_count": 2}],
+                "pcs": [{"id": "PC1"}, {"id": "PC2"}],
+                "taps": []
+            }
+        })),
+    )
+    .await;
+    let id = created["data"]["classroom_id"].as_str().unwrap().to_string();
+    open(state.clone(), &id).await;
+    let mut roles = Vec::new();
+    for _ in 0..4 {
+        roles.push(join_claimed(state.clone()).await);
+    }
+    let pcs: Vec<&(String, Value)> = roles.iter().filter(|(_, d)| d["kind"] == "pc").collect();
+    assert_eq!(pcs.len(), 2);
+    let (pc1_conn, pc1) = pcs[0];
+    let (pc2_conn, pc2) = pcs[1];
+    let pc1_id = pc1["id"].as_str().unwrap();
+    let pc2_id = pc2["id"].as_str().unwrap();
+    let pc1_port = pc1["ports"][0]["id"].as_str().unwrap();
+    let pc2_port = pc2["ports"][0]["id"].as_str().unwrap();
+
+    let (st, v) = put_port(
+        state.clone(),
+        pc1_conn,
+        pc1_id,
+        pc1_port,
+        json!({"ip": "192.168.1.1"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert_eq!(v["error"]["code"], "IP_CONFLICT");
+    assert!(v["error"]["message"].as_str().unwrap().contains("R1/01"));
+
+    let (st, v) = put_port(
+        state.clone(),
+        pc1_conn,
+        pc1_id,
+        pc1_port,
+        json!({"ip": "192.168.1.10"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["data"]["ports"][0]["ip"], "192.168.1.10");
+
+    let (st, _) = put_port(
+        state.clone(),
+        pc1_conn,
+        pc1_id,
+        pc1_port,
+        json!({"ip": "192.168.1.10"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, v) = put_port(
+        state.clone(),
+        pc2_conn,
+        pc2_id,
+        pc2_port,
+        json!({"ip": "192.168.1.10"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert_eq!(v["error"]["code"], "IP_CONFLICT");
+    assert!(v["error"]["message"].as_str().unwrap().contains(pc1_port));
+
+    let (st, v) = put_port(
+        state.clone(),
+        pc2_conn,
+        pc2_id,
+        pc2_port,
+        json!({"ip": "192.168.1.11"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["data"]["ports"][0]["ip"], "192.168.1.11");
+}
