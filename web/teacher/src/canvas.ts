@@ -1,6 +1,6 @@
 import type { DeviceKind } from "@shared/claim";
 import { TOPO_MODEL } from "@shared/models";
-import { logicalIconFile, type TopoLayout, type TopoSnapshot, type TopoView, buildTopo } from "@shared/topo";
+import { logicalIconFile, topoDensity, type TopoLayout, type TopoSnapshot, type TopoView, buildTopo } from "@shared/topo";
 
 export type IconUrls = Partial<Record<DeviceKind, string>>;
 
@@ -12,7 +12,7 @@ export function renderCanvas(
 ): { html: string; view: TopoView } {
   const view = buildTopo(snap, layout);
   const html = `
-    <section class="topo" data-mode="${snap.mode}" style="--topo-zoom:${zoom / 100}">
+    <section class="topo" data-mode="${snap.mode}" data-dense="${topoDensity(view.nodes.length)}" style="--topo-zoom:${zoom / 100};--topo-w:${view.width};--topo-h:${view.height}">
       <p class="topo-tab">网络拓扑</p>
       <div class="topo-tools">
         <button type="button" data-topo-zoom="out" aria-label="缩小">-</button>
@@ -21,11 +21,13 @@ export function renderCanvas(
         <button type="button" data-topo-arrange>整理</button>
       </div>
       <div class="topo-world">
+        <div class="topo-fit">
         <svg class="topo-wires" viewBox="0 0 ${view.width} ${view.height}" preserveAspectRatio="none" role="img" aria-label="课堂拓扑">
           ${view.edges.map((edge) => edgeMarkup(edge)).join("")}
         </svg>
         <div class="topo-nodes">
           ${view.nodes.map((node) => nodeMarkup(node, view)).join("")}
+        </div>
         </div>
       </div>
     </section>
@@ -91,3 +93,4 @@ function escapeHtml(text: string): string {
 function escapeAttr(text: string): string {
   return escapeHtml(text);
 }
+import { logicalIconFile, topoDensity, type TopoLayout, type TopoSnapshot, type TopoView, buildTopo } from "@shared/topo";

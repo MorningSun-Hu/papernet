@@ -1430,9 +1430,9 @@ main {
   font-size: 0.68rem;
 }
 .pc-back .port {
-  width: 13%;
-  height: 8%;
-  min-width: 22px;
+  width: 13.1%;
+  height: 9%;
+  min-width: 0;
 }
 .canvas[data-kind="tap"] .port {
   width: 8.2%;
@@ -1611,8 +1611,7 @@ main {
 }
 .stage[data-kind="switch"] .port .pid,
 .stage[data-kind="router"] .port .pid,
-.stage[data-kind="tap"] .port .pid,
-.stage[data-kind="pc"] .port .pid {
+.stage[data-kind="tap"] .port .pid {
   top: auto;
   bottom: calc(100% + 1px);
   font-size: 0.52rem;
@@ -1681,13 +1680,22 @@ main {
   overflow: visible;
 }
 .pc-front,
-.stage[data-kind="pc"] .canvas.pc-back {
+.pc-back-wrap {
   max-width: 190px;
   width: 100%;
   justify-self: center;
+  margin: 0;
   background: transparent;
   border: 0;
   padding: 0;
+  overflow: visible;
+}
+.stage[data-kind="pc"] .canvas.pc-back {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  overflow: visible;
 }
 .pc-front figcaption,
 .pc-back-cap {
@@ -1922,19 +1930,20 @@ main {
   color: var(--muted);
 }
 .pc-back .port {
-  width: 13%;
-  height: 8%;
-  min-width: 22px;
+  width: 13.1%;
+  height: 9%;
+  min-width: 0;
   border-radius: 4px;
 }
-.pc-back .port .pid {
-  left: 50%;
-  top: auto;
-  bottom: calc(100% + 1px);
-  transform: translateX(-50%);
-  font-size: 0.52rem;
-  padding: 0 3px;
-  line-height: 1.15;
+.stage[data-kind="pc"] .pc-back .port .pid {
+  left: calc(100% + 6px);
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  font-size: 0.62rem;
+  padding: 1px 6px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .pc-back .port-dot {
   display: none;
@@ -1996,7 +2005,155 @@ main {
   }
 }
 .stage[data-kind="pc"] .pc-back .port.overlay {
-  width: 13%;
-  height: 8%;
-  min-width: 22px;
+  width: 13.1%;
+  height: 9%;
+  min-width: 0;
+}
+.shell[data-kind="pc"] .lab > .hint {
+  display: none;
+}
+.stage[data-kind="pc"] {
+  grid-template-columns: minmax(0, 190px) minmax(0, 1.55fr) minmax(0, 190px) minmax(0, 270px);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.pc-front,
+.pc-back-wrap {
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: min(190px, 100%);
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+.pc-front .chassis-img,
+.pc-back-wrap .canvas.pc-back {
+  --box-h: calc(100cqh - 1.8em);
+  --box-w: calc(var(--box-h) * 705 / 1451);
+  width: min(100cqw, var(--box-w));
+  height: auto;
+  aspect-ratio: 705 / 1451;
+}
+.pc-back-wrap .canvas.pc-back {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.pc-back-wrap .chassis-img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.pc-front figcaption,
+.pc-back-cap {
+  flex: 0 0 auto;
+}
+.pc-arp .arp-table,
+.pc-arp .arp-table thead,
+.pc-arp .arp-table tbody {
+  display: revert;
+}
+.pc-arp .arp-table {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  font-size: 0.78rem;
+}
+.pc-arp .arp-table th,
+.pc-arp .arp-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.stage[data-kind="switch"] .canvas.photo-chassis,
+.stage[data-kind="router"] .canvas.photo-chassis,
+.stage[data-kind="tap"] .canvas.photo-chassis {
+  width: fit-content;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+}
+.stage[data-kind="switch"] .chassis-img,
+.stage[data-kind="router"] .chassis-img,
+.stage[data-kind="tap"] .chassis-img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(42vh, 100%);
+  object-fit: contain;
+}
+@media (max-width: 1500px) {
+  .local-net dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-height: 800px) {
+  .shell header,
+  .shell .hud {
+    padding: 6px 14px;
+  }
+  .hero-title {
+    margin: 4px 16px 0;
+    font-size: 1.15rem;
+  }
+  .hero-sub {
+    display: none;
+  }
+  .lab {
+    padding: 8px 12px 8px;
+    gap: 10px;
+  }
+  .hud-foot {
+    padding: 4px 16px;
+    font-size: 0.75rem;
+  }
+  .local-net {
+    padding: 8px 10px 10px;
+  }
+  .local-net dl {
+    gap: 6px;
+  }
+  .net-cell {
+    padding: 6px 8px;
+  }
+  .net-ico {
+    width: 24px;
+    height: 24px;
+  }
+  .pc-front,
+  .pc-back-wrap {
+    width: min(152px, 100%);
+  }
+  .stage[data-kind="pc"] {
+    gap: 10px 10px;
+    grid-template-columns: minmax(0, 152px) minmax(0, 1.55fr) minmax(0, 152px) minmax(0, 220px);
+  }
+  .pc-peers,
+  .pc-arp {
+    padding: 8px;
+  }
+  .stage[data-kind="switch"] .chassis-img,
+  .stage[data-kind="router"] .chassis-img,
+  .stage[data-kind="tap"] .chassis-img {
+    max-height: min(34vh, 100%);
+  }
+}
+@media (min-width: 1600px) and (min-height: 900px) {
+  .pc-front,
+  .pc-back-wrap {
+    width: min(260px, 100%);
+  }
+  .stage[data-kind="pc"] {
+    grid-template-columns: minmax(0, 260px) minmax(0, 1.55fr) minmax(0, 260px) minmax(240px, 300px);
+  }
+  .stage[data-kind="switch"] .chassis-img,
+  .stage[data-kind="router"] .chassis-img,
+  .stage[data-kind="tap"] .chassis-img {
+    max-height: min(52vh, 100%);
+  }
 }

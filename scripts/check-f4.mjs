@@ -209,6 +209,23 @@ const pcYs = new Set(wrapped.nodes.filter((n) => n.kind === "pc").map((n) => n.y
 assert.equal(pcYs.size, 2);
 assert.ok(wrapped.nodes.find((n) => n.id === "PC6")?.y > wrapped.nodes.find((n) => n.id === "PC1")?.y);
 
+const crowd = parseTopoSnapshot({
+  mode: "normal",
+  devices: Array.from({ length: 48 }, (_, i) => ({ id: `PC${i + 1}`, kind: "pc", ports: [] })).concat([
+    { id: "S1", kind: "switch", ports: [] },
+    { id: "R1", kind: "router", ports: [] },
+  ]),
+  links: [],
+  tap_attach: [],
+});
+assert.ok(crowd);
+const crowded = buildTopo(crowd);
+const crowdPcs = crowded.nodes.filter((n) => n.kind === "pc");
+const crowdRows = new Set(crowdPcs.map((n) => n.y));
+assert.ok(crowdRows.size <= 5);
+const crowdFirstY = Math.min(...crowdPcs.map((n) => n.y));
+assert.ok(crowdPcs.filter((n) => n.y === crowdFirstY).length >= 8);
+
 const custom = buildTopo(snap, { PC1: { x: 40, y: 500 }, R1: { x: 200, y: 80 } });
 const arranged = arrangeTopo(custom);
 assert.equal(arranged.PC1?.y, 500);

@@ -41,11 +41,13 @@ function pcStage(model: StageModel, chatHtml: string, hostsHtml = "", arpHtml = 
       <figcaption>高性能 · 稳定 · 探索无限</figcaption>
     </figure>
     <div class="pc-chat">${chatHtml}</div>
-    <div class="canvas photo-chassis pc-back" aria-label="机箱背面">
-      <img class="chassis-img" src="${PC_BACK}" alt="机箱背面" />
-      ${port ? portMarkup(port, true, "bot") : ""}
-      <p class="pc-back-cap">连接网络 · 通向更大的世界</p>
-    </div>
+    <figure class="pc-back-wrap">
+      <div class="canvas photo-chassis pc-back" aria-label="机箱背面">
+        <img class="chassis-img" src="${PC_BACK}" alt="机箱背面" />
+        ${port ? portMarkup(port, true, "bot") : ""}
+      </div>
+      <figcaption class="pc-back-cap">连接网络 · 通向更大的世界</figcaption>
+    </figure>
     <div class="peers pc-logic">${port?.peerPortId ? boxMarkup(port, "bot") : ""}</div>
     <aside class="pc-side">
       <section class="pc-peers">
@@ -161,8 +163,8 @@ export function placePeerBoxes(root: HTMLElement): void {
     box.style.transform = "none";
     const saved = peerBoxPos.get(portId);
     if (saved) {
-      box.style.left = `${saved.left}px`;
-      box.style.top = `${saved.top}px`;
+      box.style.left = `${clamp(saved.left, 4, Math.max(4, stageBox.width - (box.offsetWidth || 88) - 4))}px`;
+      box.style.top = `${clamp(saved.top, 4, Math.max(4, stageBox.height - (box.offsetHeight || 64) - 4))}px`;
       continue;
     }
     const port = root.querySelector<HTMLElement>(`.port[data-port="${cssAttr(portId)}"]`);
@@ -173,8 +175,14 @@ export function placePeerBoxes(root: HTMLElement): void {
     const above = box.dataset.row === "top";
     const width = box.offsetWidth || 88;
     const height = box.offsetHeight || 64;
-    const left = p.left + p.width / 2 - stageBox.left - width / 2;
-    const top = above ? p.top - stageBox.top - height - 18 : p.bottom - stageBox.top + 18;
+    let left = p.left + p.width / 2 - stageBox.left - width / 2;
+    let top = above ? p.top - stageBox.top - height - 18 : p.bottom - stageBox.top + 18;
+    if (stage.dataset.kind === "pc") {
+      left = p.right - stageBox.left + 36;
+      top = p.top - stageBox.top + p.height / 2 - height / 2;
+    }
+    left = clamp(left, 4, Math.max(4, stageBox.width - width - 4));
+    top = clamp(top, 4, Math.max(4, stageBox.height - height - 4));
     box.style.left = `${left}px`;
     box.style.top = `${top}px`;
   }
@@ -217,6 +225,10 @@ export function layoutWires(root: HTMLElement): void {
     );
   }
   svg.innerHTML = lines.join("");
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
 }
 
 function cssAttr(value: string): string {

@@ -320,15 +320,17 @@ function tapBar(): string {
           })
           .join("")}
       </fieldset>
-      <fieldset class="tap-pick">
+      <fieldset class="tap-pick tap-links">
         <legend>链路</legend>
-        ${links
-          .map((l) => {
-            const value = linkValue(l.port_a, l.port_b);
-            const on = value === linkSel ? "checked" : "";
-            return `<label class="tap-opt"><input type="radio" name="link" value="${escapeAttr(value)}" ${on} /><span>${escapeHtml(l.port_a)} — ${escapeHtml(l.port_b)}</span></label>`;
-          })
-          .join("")}
+        <div class="tap-opt-list">
+          ${links
+            .map((l) => {
+              const value = linkValue(l.port_a, l.port_b);
+              const on = value === linkSel ? "checked" : "";
+              return `<label class="tap-opt"><input type="radio" name="link" value="${escapeAttr(value)}" ${on} /><span>${escapeHtml(l.port_a)} — ${escapeHtml(l.port_b)}</span></label>`;
+            })
+            .join("")}
+        </div>
       </fieldset>
       <button type="submit">挂接</button>
     </form>

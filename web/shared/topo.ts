@@ -205,7 +205,7 @@ export function arrangeTopo(view: TopoView, rowTol = 80): TopoLayout {
     }
   }
   const next: TopoLayout = {};
-  const gap = 168;
+  const gap = spacingForCount(nodes.length).gap;
   for (const row of rows) {
     row.sort((a, b) => a.x - b.x);
     const y = Math.min(...row.map((n) => n.y));
@@ -242,10 +242,8 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
       row[device.kind].push(device);
     }
   }
-  const gap = 168;
-  const pad = 110;
-  const maxCols = 5;
-  const rowDy = 160;
+  const widest = Math.max(row.pc.length, row.switch.length + row["tap-free"].length, row.router.length);
+  const { maxCols, gap, rowDy, pad } = spacingForCount(widest);
   const width = Math.max(960, pad * 2 + gap * (maxCols - 1));
   const nodes: TopoNode[] = [];
   let y = 90;
@@ -336,6 +334,29 @@ export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView
     }
   }
   return { width, height, nodes, edges };
+}
+
+export function topoDensity(nodeCount: number): 0 | 1 | 2 {
+  if (nodeCount > 36) {
+    return 2;
+  }
+  if (nodeCount > 16) {
+    return 1;
+  }
+  return 0;
+}
+
+function spacingForCount(widestRow: number): { maxCols: number; gap: number; rowDy: number; pad: number } {
+  if (widestRow <= 8) {
+    return { maxCols: 5, gap: 168, rowDy: 160, pad: 110 };
+  }
+  if (widestRow <= 16) {
+    return { maxCols: 6, gap: 140, rowDy: 140, pad: 90 };
+  }
+  if (widestRow <= 28) {
+    return { maxCols: 8, gap: 120, rowDy: 124, pad: 80 };
+  }
+  return { maxCols: 10, gap: 108, rowDy: 116, pad: 72 };
 }
 
 function placeWrapped(

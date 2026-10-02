@@ -32,7 +32,7 @@ export function buildStage(device: Device, links: LinkView[], tapAttach: TapAtta
   const overlay = true;
   const coords =
     device.kind === "pc"
-      ? device.ports.map(() => ({ x: 22.7, y: 72.8 }))
+      ? device.ports.map(() => ({ x: 19.15, y: 77.39 }))
       : device.kind === "tap"
         ? tapSlots(device.ports.length)
         : device.kind === "router"

@@ -786,7 +786,19 @@ impl Classroom {
         if !is_reachable(&device_id, to_ip, &refs, &self.links) {
             return Err(CommError::Unreachable);
         }
+        if !self.destination_online(to_ip) {
+            return Err(CommError::Unreachable);
+        }
         Ok(format!("来自 {to_ip} 的虚拟响应"))
+    }
+
+    /// A host answers only while it is claimed (online). An unclaimed device is
+    /// physically wired but powered off, so ping must treat it as unreachable.
+    fn destination_online(&self, to_ip: &str) -> bool {
+        self.devices.values().any(|d| {
+            d.ports.iter().any(|p| p.ip.as_deref() == Some(to_ip))
+                && d.claimed_connection_id.is_some()
+        })
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
@@ -1263,6 +1275,56 @@ mod tests {
                 port.peer_port_id = peer.map(str::to_string);
             }
         }
+    }
+
+    fn set_ip(class: &mut Classroom, port_id: &str, ip: Option<&str>) {
+        for device in class.devices.values_mut() {
+            if let Some(port) = device.ports.iter_mut().find(|p| p.id == port_id) {
+                port.ip = ip.map(str::to_string);
+            }
+        }
+    }
+
+    #[test]
+    fn ping_to_unclaimed_pc_is_unreachable() {
+        use papernet_shared::SwitchSpec;
+        let inv = Inventory {
+            pcs: vec![
+                PcSpec { id: "PC1".into(), ..Default::default() },
+                PcSpec { id: "PC2".into(), ..Default::default() },
+            ],
+            switches: vec![SwitchSpec { id: "S1".into(), port_count: 2, ..Default::default() }],
+            ..Default::default()
+        };
+        let mut class = Classroom::new("c1".into(), "t".into(), inv, 0);
+        set_peer(&mut class, "PC1/01", Some("S1/01"));
+        set_peer(&mut class, "S1/01", Some("PC1/01"));
+        set_peer(&mut class, "S1/02", Some("PC2/01"));
+        set_peer(&mut class, "PC2/01", Some("S1/02"));
+        set_ip(&mut class, "PC1/01", Some("192.168.1.10"));
+        set_ip(&mut class, "PC2/01", Some("192.168.1.11"));
+        class.claim_state = ClaimState::Open;
+        let (conn, claimed_id, claimed_ip, other_ip) = match class
+            .join(ClientKind::StudentHosted, None, None)
+            .expect("join")
+        {
+            JoinOutcome::Claimed { connection_id, device } => {
+                let id = device["id"].as_str().unwrap().to_string();
+                if id == "PC1" {
+                    (connection_id, id, "192.168.1.10".to_string(), "192.168.1.11".to_string())
+                } else {
+                    (connection_id, id, "192.168.1.11".to_string(), "192.168.1.10".to_string())
+                }
+            }
+            _ => panic!("expected claimed"),
+        };
+        assert_eq!(
+            class.devices[&claimed_id].claimed_connection_id.as_deref(),
+            Some(conn.as_str())
+        );
+        assert!(class.ping(&conn, &claimed_ip).is_ok());
+        let err = class.ping(&conn, &other_ip).unwrap_err();
+        assert!(matches!(err, CommError::Unreachable));
     }
 
     #[test]

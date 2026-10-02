@@ -47,6 +47,13 @@ assert.equal(studentMain.includes("@icons/"), false, "student runtime should not
 const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), "utf8");
 assert.equal(teacherMain.includes("@icons/"), false, "teacher runtime should not load device SVGs");
 assert.ok(fs.existsSync(path.join(root, "web/shared/brand.ts")));
+const brand = fs.readFileSync(path.join(root, "web/shared/brand.ts"), "utf8");
+for (const label of ["实验环境", "网络拓扑", "工具箱", "帮助文档"]) {
+  assert.ok(brand.includes(label), `studentNav missing ${label}`);
+}
+const studentNavFn = brand.slice(brand.indexOf("export function studentNav"), brand.indexOf("export function teacherNav"));
+assert.equal(studentNavFn.includes("实验台"), false);
+assert.equal(studentNavFn.includes("拓扑视图"), false);
 const studentStage = fs.readFileSync(path.join(root, "web/student/src/stage.ts"), "utf8");
 assert.ok(studentStage.includes("@models/") || studentStage.includes("CHASSIS"));
 assert.ok(studentStage.includes("chassis-img"));
@@ -54,6 +61,16 @@ assert.equal(studentStage.includes("metal-chassis"), false);
 for (const name of ["pc-front.png", "pc-back.png", "tap.png", "switch.png", "router.png", "topo-pc.png", "topo-switch.png", "topo-tap.png", "topo-router.png"]) {
   assert.ok(fs.existsSync(path.join(root, "assets/models", name)), `missing models/${name}`);
 }
+function pngSize(file) {
+  const buf = fs.readFileSync(file);
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+const frontSize = pngSize(path.join(root, "assets/models/pc-front.png"));
+const backSize = pngSize(path.join(root, "assets/models/pc-back.png"));
+assert.equal(backSize.w, frontSize.w, "pc-back width must match pc-front");
+assert.equal(backSize.h, frontSize.h, "pc-back height must match pc-front");
+assert.ok(fs.readFileSync(path.join(root, "web/shared/stage.ts"), "utf8").includes("x: 19.15, y: 77.39"));
+
 for (const name of ["topo-pc.svg", "topo-switch.svg", "topo-tap.svg", "topo-router.svg", "topo-switch-icon.svg", "topo-switch-icon.png"]) {
   assert.ok(fs.existsSync(path.join(root, "assets/models", name)), `missing models/${name}`);
 }

@@ -335,6 +335,47 @@ async fn wrong_gateway_chat_fails() {
 }
 
 #[tokio::test]
+async fn ping_to_unbound_pc_fails() {
+    let (state, _dir) = state();
+    let id = create_scene(state.clone()).await;
+    let roles = claim_all(state.clone(), &id, 5).await;
+    wire_scene(state.clone(), &roles, "192.168.1.1").await;
+    let (pca_conn, _) = by_id(&roles, "PCA");
+
+    let (st, v) = send(
+        state.clone(),
+        "POST",
+        "/api/v1/ping",
+        &[("x-connection-id", pca_conn), ("x-classroom-id", &id)],
+        Some(json!({"to_ip": "192.168.2.10"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["data"]["reachable"], true);
+
+    let (st, _) = send(
+        state.clone(),
+        "POST",
+        &format!("/api/v1/classrooms/{id}/devices/PCB/unbind"),
+        &[("x-client-kind", "teacher")],
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, v) = send(
+        state,
+        "POST",
+        "/api/v1/ping",
+        &[("x-connection-id", pca_conn), ("x-classroom-id", &id)],
+        Some(json!({"to_ip": "192.168.2.10"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert_eq!(v["error"]["code"], "UNREACHABLE");
+}
+
+#[tokio::test]
 async fn same_segment_two_pcs_via_switch() {
     let (state, _dir) = state();
     let (_, v) = send(
