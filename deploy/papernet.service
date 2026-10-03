@@ -1,0 +1,19 @@
+[Unit]
+Description=PaperNet teacher
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/papernet-deploy/runtime
+Environment=PAPERNET_BIND=127.0.0.1:80
+Environment=PAPERNET_DATA_DIR=/home/ubuntu/papernet-data
+Environment=PAPERNET_UI_DIR=/home/ubuntu/papernet-deploy/runtime
+ExecStart=/home/ubuntu/papernet-deploy/runtime/papernet-teacher
+Restart=on-failure
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

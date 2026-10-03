@@ -169,3 +169,13 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: 用户要求界面不要使用「特殊双口交换机」
 - Instructions:
   - TAP 对学生/教师可见中文名使用「网络分流器」
+
+[教室服务器手动部署]
+- Date: 2026-10-03
+- Context: Docker Hub 不可用后改为教师机 + 系统 Nginx
+- Category: Operations & Deployment
+- Instructions:
+  - 教室服务器不用 Docker
+  - 教师机 `PAPERNET_BIND=127.0.0.1:80`，`PAPERNET_UI_DIR` 指向 `runtime/`，自己托管页面
+  - 系统 Nginx 只听 8080，反代到本机 80，不托管静态文件
+  - 防火墙和安全组只放行 TCP 8080
