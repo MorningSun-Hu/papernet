@@ -42,6 +42,69 @@ async fn health_returns_up() {
 }
 
 #[tokio::test]
+async fn serves_teacher_and_student_static_pages() {
+    let (state, _dir) = state();
+    let ui = tempdir().expect("ui dir");
+    std::fs::create_dir_all(ui.path().join("teacher/assets")).unwrap();
+    std::fs::create_dir_all(ui.path().join("student")).unwrap();
+    std::fs::write(ui.path().join("teacher/index.html"), b"<html>teacher-ui</html>").unwrap();
+    std::fs::write(ui.path().join("teacher/assets/app.js"), b"console.log(1)").unwrap();
+    std::fs::write(ui.path().join("student/index.html"), b"<html>student-ui</html>").unwrap();
+    let router = papernet_teacher::with_static_ui(app(state), ui.path()).unwrap();
+
+    let teacher = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/teacher/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(teacher.status(), StatusCode::OK);
+    let teacher_body = teacher.into_body().collect().await.unwrap().to_bytes();
+    assert!(teacher_body.windows(b"teacher-ui".len()).any(|w| w == b"teacher-ui"));
+
+    let asset = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/teacher/assets/app.js")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(asset.status(), StatusCode::OK);
+
+    let student = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/student/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(student.status(), StatusCode::OK);
+    let student_body = student.into_body().collect().await.unwrap().to_bytes();
+    assert!(student_body.windows(b"student-ui".len()).any(|w| w == b"student-ui"));
+
+    let health = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn create_classroom_returns_id_without_join_code() {
     let (state, dir) = state();
     let res = app(state)

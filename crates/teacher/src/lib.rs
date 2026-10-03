@@ -27,6 +27,7 @@ use tokio::sync::mpsc;
 
 use classroom::{Classroom, JoinOutcome, OpenClaimEvent};
 use classroom::{AttachError, CommError, PortError, SimError, SimPush, UnbindError};
+use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -118,15 +119,75 @@ pub fn app(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Serve `/teacher/` and `/student/` from a UI directory that contains those folders.
+pub fn with_static_ui(router: Router, ui_dir: &Path) -> Result<Router, String> {
+    let teacher_dir = ui_dir.join("teacher");
+    let student_dir = ui_dir.join("student");
+    let teacher_index = teacher_dir.join("index.html");
+    let student_index = student_dir.join("index.html");
+    if !teacher_index.is_file() {
+        return Err(format!("缺少教师端页面 {}", teacher_index.display()));
+    }
+    if !student_index.is_file() {
+        return Err(format!("缺少学生端页面 {}", student_index.display()));
+    }
+    Ok(router
+        .nest_service(
+            "/teacher",
+            ServeDir::new(teacher_dir)
+                .append_index_html_on_directories(true)
+                .fallback(ServeFile::new(teacher_index)),
+        )
+        .nest_service(
+            "/student",
+            ServeDir::new(student_dir)
+                .append_index_html_on_directories(true)
+                .fallback(ServeFile::new(student_index)),
+        ))
+}
+
+fn resolve_ui_dir() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var("PAPERNET_UI_DIR") {
+        let p = PathBuf::from(raw);
+        if p.as_os_str().is_empty() {
+            return None;
+        }
+        return Some(p);
+    }
+    let mut bases = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        bases.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            bases.push(parent.to_path_buf());
+        }
+    }
+    for base in bases {
+        if base.join("teacher").join("index.html").is_file()
+            && base.join("student").join("index.html").is_file()
+        {
+            return Some(base);
+        }
+    }
+    None
+}
+
 pub async fn run() -> Result<(), String> {
     let bind = std::env::var("PAPERNET_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let data_dir = std::env::var("PAPERNET_DATA_DIR").unwrap_or_else(|_| "data".into());
     let db_path = PathBuf::from(data_dir).join("papernet.sqlite");
     let state = AppState::open(&db_path)?;
+    let mut router = app(state);
+    if let Some(dir) = resolve_ui_dir() {
+        eprintln!("papernet-teacher: UI {} (/teacher/ /student/)", dir.display());
+        router = with_static_ui(router, &dir)?;
+    }
     let listener = TcpListener::bind(&bind)
         .await
         .map_err(|e| e.to_string())?;
-    axum::serve(listener, app(state))
+    eprintln!("papernet-teacher: listening on {bind}");
+    axum::serve(listener, router)
         .await
         .map_err(|e| e.to_string())
 }
