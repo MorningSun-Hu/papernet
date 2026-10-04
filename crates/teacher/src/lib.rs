@@ -785,17 +785,21 @@ fn persist_join(
 }
 
 fn emit_online(state: &AppState, classroom_id: &str) {
-    let count = {
+    let (count, pc_hosts) = {
         let Ok(store) = state.inner.lock() else {
             return;
         };
         match store.classrooms.get(classroom_id) {
-            Some(c) => c.connections.len(),
+            Some(c) => (c.connections.len(), c.pc_hosts()),
             None => return,
         }
     };
     if let Ok(hub) = state.hub.lock() {
-        hub.broadcast(json!({"event": "classroom.online", "count": count}));
+        hub.broadcast(json!({
+            "event": "classroom.online",
+            "count": count,
+            "pc_hosts": pc_hosts,
+        }));
     }
 }
 

@@ -382,6 +382,15 @@ export function applyWsEvent(screen: Screen, payload: unknown): Screen {
       return { ...screen, tapAttach };
     }
   }
+  if (event === "classroom.online" && screen.kind === "claimed") {
+    if (!Array.isArray(root.pc_hosts)) {
+      return screen;
+    }
+    return {
+      ...screen,
+      pcHosts: parsePcHosts(root.pc_hosts),
+    };
+  }
   if ((event === "chat.sent" || event === "chat.received") && screen.kind === "claimed") {
     return {
       ...screen,

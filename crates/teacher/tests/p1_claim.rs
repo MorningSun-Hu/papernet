@@ -429,6 +429,7 @@ async fn join_pushes_classroom_online() {
     let v: Value = serde_json::from_str(&online.into_text().unwrap()).unwrap();
     assert_eq!(v["event"], "classroom.online");
     assert_eq!(v["count"], 2);
+    assert!(v["pc_hosts"].is_array());
 }
 
 #[tokio::test]

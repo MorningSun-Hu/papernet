@@ -181,18 +181,10 @@
 # GitHub login token (do not commit)
 授权登录Github.txt
 
-# Docker packaging (local only, do not commit)
+# Local packaging (do not commit)
 Dockerfile
 .dockerignore
 docker-compose.yml
-deploy/Dockerfile
-deploy/docker-compose.yml
-deploy/.dockerignore
-deploy/Dockerfile.dockerignore
-deploy/DOCKER.md
-deploy/docker-entrypoint.sh
-deploy/Ubuntu-26.04-Docker部署教程.html
-deploy/Ubuntu-26.04-Docker部署教程.docx
 deploy/runtime/
 deploy/windows/
 
