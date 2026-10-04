@@ -172,10 +172,10 @@ Entries discovered by the Agent during task execution should follow this format:
 
 [教室服务器手动部署]
 - Date: 2026-10-03
-- Context: Docker Hub 不可用后改为教师机 + 系统 Nginx
+- Context: Docker Hub 不可用后改为系统 Nginx 托管页面
 - Category: Operations & Deployment
 - Instructions:
   - 教室服务器不用 Docker
-  - 教师机 `PAPERNET_BIND=127.0.0.1:80`，`PAPERNET_UI_DIR` 指向 `runtime/`，自己托管页面
-  - 系统 Nginx 只听 8080，反代到本机 80，不托管静态文件
+  - 教师机 `PAPERNET_BIND=127.0.0.1:80`，只提供 `/api` 与 `/ws`
+  - 系统 Nginx 听 8080：托管 `/teacher/` `/student/`，反代 `/api/` `/ws` 到本机 80
   - 防火墙和安全组只放行 TCP 8080

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaperNet 教室服务器 · Nginx 托管页面</title>
+<style>
+body { margin: 0; color: #1c1712; background: #f3ead7; font: 18px/1.7 "Noto Serif SC", "Songti SC", Georgia, serif; }
+main { max-width: 780px; margin: 0 auto; padding: 40px 24px 72px; }
+h1 { color: #9b2d1f; }
+h2 { color: #9b2d1f; border-top: 1px solid #cbb99a; padding-top: 20px; }
+code, pre { font-family: ui-monospace, monospace; }
+code { background: #f0d4c4; padding: 0.08em 0.38em; }
+pre { background: #231e19; color: #f4ead8; padding: 14px 16px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #cbb99a; text-align: left; padding: 8px 6px; }
+</style>
+</head>
+<body>
+<main>
+<h1>教室服务器部署</h1>
+<p>教师机只听本机 <code>127.0.0.1:80</code>，提供 <code>/api</code> 和 <code>/ws</code>。Nginx 听 <code>8080</code>，托管 <code>/teacher/</code>、<code>/student/</code>，并把接口转到教师机。不用 Docker。</p>
+<h2>拷贝</h2>
+<pre>scp -r deploy ubuntu@服务器IP:~/papernet-deploy</pre>
+<h2>安装并启动</h2>
+<pre>sudo apt-get update
+sudo apt-get install -y nginx
+mkdir -p ~/papernet-data
+chmod +x ~/papernet-deploy/runtime/papernet-teacher
+sudo mkdir -p /var/www/papernet
+sudo cp -a ~/papernet-deploy/runtime/teacher /var/www/papernet/teacher
+sudo cp -a ~/papernet-deploy/runtime/student /var/www/papernet/student
+sudo cp ~/papernet-deploy/nginx.conf /etc/nginx/sites-available/papernet
+sudo ln -sf /etc/nginx/sites-available/papernet /etc/nginx/sites-enabled/papernet
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx
+sudo cp ~/papernet-deploy/papernet.service /etc/systemd/system/papernet.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now papernet
+sudo ufw allow 8080/tcp</pre>
+<p>账号不是 <code>ubuntu</code> 时，先改 <code>papernet.service</code> 里的 <code>User=</code> 和路径。云安全组只放行 TCP 8080，不要放行 80。</p>
+<h2>访问</h2>
+<table>
+<tr><th>谁打开</th><th>地址</th></tr>
+<tr><td>老师</td><td><code>http://服务器IP:8080/teacher/</code></td></tr>
+<tr><td>学生</td><td><code>http://服务器IP:8080/student/</code></td></tr>
+<tr><td>健康检查</td><td><code>http://服务器IP:8080/api/v1/health</code></td></tr>
+</table>
+<p>根路径没有首页。两边必须同一主机名和同一端口。</p>
+<h2>维护</h2>
+<pre>sudo journalctl -u papernet -n 100 --no-pager
+sudo systemctl restart papernet
+sudo systemctl reload nginx</pre>
+<p>80 被占用时：删掉 Nginx 默认站点后 <code>ss -tlnp | grep ':80'</code>，应只有教师机。</p>
+<p><code>/teacher/</code> 返回 500、日志 <code>Permission denied</code>：Nginx 工作用户（通常 <code>www-data</code>）读不了部署目录。页面拷到 <code>/var/www/papernet/</code>，不要让 Nginx 直接读 <code>/home/...</code>。无斜杠的 <code>/teacher</code> 会 301 到 <code>/teacher/</code>。</p>
+</main>
+</body>
+</html>
