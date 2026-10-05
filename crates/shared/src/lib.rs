@@ -386,7 +386,9 @@ pub fn materialize_inventory(inv: &Inventory) -> Vec<MaterializedDevice> {
     }
     for spec in &inv.pcs {
         let mut ports = numbered_ports(&spec.id, 1, false);
+        let mac = new_unicast_mac();
         if let Some(port) = ports.get_mut(0) {
+            port.mac = Some(mac.clone());
             if let Some(ip) = nonempty_opt(&spec.ip) {
                 port.ip = Some(ip);
             }
@@ -400,7 +402,7 @@ pub fn materialize_inventory(inv: &Inventory) -> Vec<MaterializedDevice> {
         out.push(MaterializedDevice {
             id: spec.id.clone(),
             kind: DeviceKind::Pc,
-            mac: None,
+            mac: Some(mac),
             ports,
         });
     }
@@ -502,6 +504,8 @@ mod tests {
         assert_eq!(pc.ports[0].ip.as_deref(), Some("192.168.1.10"));
         assert_eq!(pc.ports[0].gateway.as_deref(), Some("192.168.1.1"));
         assert_eq!(pc.ports[0].peer_port_id.as_deref(), Some("S1/02"));
+        assert!(pc.mac.is_some());
+        assert_eq!(pc.ports[0].mac, pc.mac);
     }
 
     #[test]

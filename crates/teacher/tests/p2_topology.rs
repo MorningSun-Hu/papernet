@@ -258,6 +258,40 @@ async fn mutual_peer_fills_switch_mac_table() {
 }
 
 #[tokio::test]
+async fn wired_pc_fills_mac_table_before_claim() {
+    let (state, _dir) = state();
+    let (_, v) = send(
+        state.clone(),
+        "POST",
+        "/api/v1/classrooms",
+        &[],
+        Some(json!({
+            "title": "预接线",
+            "inventory": {
+                "routers": [{"id": "R1", "port_count": 1, "ports": [
+                    {"id": "R1/01", "ip": "192.168.1.1", "peer_port_id": "S1/01"}
+                ]}],
+                "switches": [{"id": "S1", "port_count": 2, "ports": [
+                    {"id": "S1/01", "peer_port_id": "R1/01"},
+                    {"id": "S1/02", "peer_port_id": "PC1/01"}
+                ]}],
+                "pcs": [{"id": "PC1", "ip": "192.168.1.10", "gateway": "192.168.1.1", "peer_port_id": "S1/02"}]
+            }
+        })),
+    )
+    .await;
+    let id = v["data"]["classroom_id"].as_str().unwrap();
+    let snap = teacher_snapshot(state, id).await;
+    let pc = snap["devices"].as_array().unwrap().iter().find(|d| d["id"] == "PC1").unwrap();
+    let pc_mac = pc["mac"].as_str().expect("pc mac at create");
+    let macs = snap["mac_table"].as_array().unwrap();
+    assert_eq!(macs.len(), 2);
+    assert!(macs.iter().any(|e| e["port_id"] == "S1/01" && e["switch_id"] == "S1"));
+    let pc_row = macs.iter().find(|e| e["port_id"] == "S1/02").expect("pc row");
+    assert_eq!(pc_row["mac"], pc_mac);
+}
+
+#[tokio::test]
 async fn pc_gateway_arp_when_link_is_up() {
     let (state, _dir) = state();
     let id = create_lab(state.clone()).await;

@@ -214,26 +214,16 @@ function localNet(screen: ClaimedScreen): string {
 }
 
 function switchBench(screen: ClaimedScreen): string {
-  const rows = screen.macTable.filter((row) => row.switch_id === screen.device.id);
   return `
     <section class="bench" data-role="switch">
       <h2>MAC 表</h2>
-      <table class="mac-table">
-        <thead><tr><th>端口</th><th>MAC</th></tr></thead>
-        <tbody>
-          ${
-            rows.length
-              ? rows
-                  .map(
-                    (row) =>
-                      `<tr><td>${escapeHtml(row.port_id)}</td><td>${escapeHtml(row.mac)}</td></tr>`,
-                  )
-                  .join("")
-              : `<tr><td colspan="2">暂无</td></tr>`
-          }
-        </tbody>
-      </table>
-      ${frameCard(screen.frame, "switch")}
+      <div class="mac-scroll">
+        <table class="mac-table">
+          <thead><tr><th>端口</th><th>MAC</th></tr></thead>
+          <tbody>${macTableRows(screen)}</tbody>
+        </table>
+      </div>
+      ${screen.mode === "simulation" ? "" : frameCard(screen.frame, "switch")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
     </section>
   `;
@@ -365,6 +355,33 @@ function chatPanel(screen: ClaimedScreen): string {
   `;
 }
 
+function macTableRows(screen: ClaimedScreen, highlightMac?: string): string {
+  const rows = screen.macTable.filter((row) => row.switch_id === screen.device.id);
+  if (!rows.length) {
+    return `<tr><td colspan="2">暂无</td></tr>`;
+  }
+  const hit = (highlightMac ?? "").toLowerCase();
+  return rows
+    .map((row) => {
+      const match = Boolean(hit) && row.mac.toLowerCase() === hit;
+      return `<tr${match ? ' data-hit="true"' : ""}><td>${escapeHtml(row.port_id)}</td><td>${escapeHtml(row.mac)}</td></tr>`;
+    })
+    .join("");
+}
+
+function switchMacLookup(screen: ClaimedScreen, dstMac?: string): string {
+  return `
+    <aside class="fwd-mac" aria-label="MAC 地址表">
+      <h4>MAC 地址表</h4>
+      <div class="mac-scroll">
+        <table class="mac-table">
+          <thead><tr><th>端口</th><th>MAC</th></tr></thead>
+          <tbody>${macTableRows(screen, dstMac)}</tbody>
+        </table>
+      </div>
+    </aside>`;
+}
+
 function forwardForm(screen: ClaimedScreen): string {
   const ports = screen.device.ports;
   const kind = screen.device.kind;
@@ -402,12 +419,12 @@ function forwardForm(screen: ClaimedScreen): string {
     : "";
   return `
     <div class="dlg-backdrop" data-open="true">
-      <form class="forward-form dlg">
+      <form class="forward-form dlg"${byMac ? ' data-lookup="mac"' : ""}>
         <header class="dlg-hd" data-fwd-drag>
           <h3>转发数据帧</h3>
           <span class="mode-pill">模拟选口 · ${escapeHtml(screen.device.id)}</span>
         </header>
-        <div class="fwd-body">
+        <div class="fwd-body"${byMac ? ' data-lookup="mac"' : ""}>
           ${queue}
           <div class="fwd-main">
             <p class="dlg-sub">${hint}</p>
@@ -424,6 +441,7 @@ function forwardForm(screen: ClaimedScreen): string {
             ${screen.notice === "端口不正确" ? `<p class="notice wrong-port">端口不正确</p>` : ""}
             <p class="hint">选错口时提示「端口不正确」；帧留在本机</p>
           </div>
+          ${byMac ? switchMacLookup(screen, frame?.dst_mac) : ""}
         </div>
       </form>
     </div>

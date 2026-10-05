@@ -169,7 +169,10 @@ const sw = blankClaimed("c-sw", {
 });
 const swTables = applyWsEvent(sw, {
   event: "topology.updated",
-  mac_table: [{ switch_id: "S1", port_id: "S1/01", mac: "aa:bb:cc:dd:ee:01" }],
+  mac_table: [
+    { switch_id: "S1", port_id: "S1/01", mac: "aa:bb:cc:dd:ee:01" },
+    { switch_id: "S1", port_id: "S1/02", mac: "aa:bb:cc:dd:ee:02" },
+  ],
 });
 assert.equal(swTables.kind, "claimed");
 assert.match(renderWorkbench(swTables), /MAC 表/);
@@ -197,6 +200,11 @@ assert.match(renderWorkbench(holding), /模拟选口/);
 assert.match(renderWorkbench(holding), /S1\/02/);
 assert.match(renderWorkbench(holding), /待转发帧/);
 assert.equal(holding.frameQueue.length, 0);
+assert.match(renderWorkbench(holding), /mac-scroll/);
+assert.doesNotMatch(renderWorkbench(holding), /<h2>网络帧<\/h2>/);
+assert.match(renderWorkbench(holding), /fwd-mac/);
+assert.match(renderWorkbench(holding), /MAC 地址表/);
+assert.match(renderWorkbench(holding), /data-hit="true"/);
 
 const queued = applyWsEvent(holding, {
   event: "frame.arrived",
@@ -271,6 +279,8 @@ const routerHold = applyWsEvent(
 );
 assert.match(renderWorkbench(routerHold), /模拟选口/);
 assert.match(renderWorkbench(routerHold), /R1\/02/);
+assert.doesNotMatch(renderWorkbench(routerHold), /fwd-mac/);
+assert.doesNotMatch(renderWorkbench(routerHold), /MAC 地址表/);
 
 assert.match(renderWorkbench(routerHold), /解包查看目的 IP/);
 assert.match(renderWorkbench(routerHold), /data-step="recv"/);

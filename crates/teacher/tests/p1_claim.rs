@@ -318,8 +318,17 @@ async fn stale_connection_id_does_not_resume_in_new_classroom() {
 
 #[tokio::test]
 async fn hosted_pc_gets_generated_unicast_mac() {
-    let (state, _dir) = state();
+    let (state, dir) = state();
     let id = create_with_pcs(state.clone(), 1).await;
+    let conn = rusqlite::Connection::open(dir.path().join("papernet.sqlite")).unwrap();
+    let before: String = conn
+        .query_row(
+            "SELECT mac FROM device WHERE classroom_id = ?1 AND device_id = 'PC1'",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(is_unicast_mac(&before));
     post(
         state.clone(),
         &format!("/api/v1/classrooms/{id}/open-claim"),
@@ -334,6 +343,7 @@ async fn hosted_pc_gets_generated_unicast_mac() {
     .await;
     let mac = v["data"]["device"]["mac"].as_str().unwrap();
     assert!(is_unicast_mac(mac));
+    assert_eq!(mac, before);
 }
 
 #[tokio::test]

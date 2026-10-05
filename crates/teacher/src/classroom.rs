@@ -339,7 +339,7 @@ impl Classroom {
             if device.kind == DeviceKind::Pc {
                 let mac = match (client_kind, nic_mac) {
                     (ClientKind::StudentStandalone, Some(mac)) => mac,
-                    _ => new_unicast_mac(),
+                    _ => device.mac.clone().unwrap_or_else(new_unicast_mac),
                 };
                 device.mac = Some(mac.clone());
                 if let Some(port) = device.ports.first_mut() {
