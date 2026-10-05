@@ -104,14 +104,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - 按阶段建 git 分支；P1 在 `P1`，P2 在 `P2`
 
 [构建与交叉编译]
- - Date: 2026-09-21
- - Context: 小磁盘环境与多平台编译中的通用做法
- - Instructions:
-   - 长编译、打包用受管后台终端，设置合理超时与 CPU 限制，避免把磁盘写满
-   - 交叉编译用环境变量指定 linker（例如 `CARGO_TARGET_*_LINKER`），不在仓库写死会污染其他平台构建的 `.cargo/config.toml`
-   - Windows 批处理使用 CRLF；避免 `if (...) else (...)` 块结构，改用 `goto`
-   - `cargo test` 不会更新运行用二进制；改完入口后需先 `cargo build` 再启动验证
-   - 受管后台终端跑 cargo 时 PATH 可能不含 `/root/.cargo/bin`，使用绝对路径 `/root/.cargo/bin/cargo`
+  - Date: 2026-10-05
+  - Context: 小磁盘环境与多平台编译中的通用做法；打包须带版本号
+  - Instructions:
+    - 长编译、打包用受管后台终端，设置合理超时与 CPU 限制，避免把磁盘写满
+    - 交叉编译用环境变量指定 linker（例如 `CARGO_TARGET_*_LINKER`），不在仓库写死会污染其他平台构建的 `.cargo/config.toml`
+    - Windows 批处理使用 CRLF；避免 `if (...) else (...)` 块结构，改用 `goto`
+    - `cargo test` 不会更新运行用二进制；改完入口后需先 `cargo build` 再启动验证
+    - 受管后台终端跑 cargo 时 PATH 可能不含 `/root/.cargo/bin`，使用绝对路径 `/root/.cargo/bin/cargo`
+    - Linux 运行包用 `bash scripts/pack-runtime.sh`，在 `deploy/runtime/版本说明.txt` 写入版本、编译时间、打包时间、Git 提交
+    - Windows 教室包用 `bash scripts/pack-windows.sh`，可执行文件名为 `papernet-teacher-<version>.exe`；`使用说明.txt` 同样写入版本与时间
 
 [预览与本地验证]
 - Date: 2026-09-19

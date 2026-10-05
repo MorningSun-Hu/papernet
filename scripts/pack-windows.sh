@@ -2,12 +2,16 @@
 # Cross-compile the teacher EXE and assemble a Windows classroom folder.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PAPERNET_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=pack-info.sh
+source "$PAPERNET_ROOT/scripts/pack-info.sh"
 TARGET="${PAPERNET_WINDOWS_TARGET:-x86_64-pc-windows-gnu}"
 LINKER="${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:-x86_64-w64-mingw32-gcc-posix}"
-OUT="${PAPERNET_WINDOWS_OUT:-$ROOT/deploy/windows}"
+OUT="${PAPERNET_WINDOWS_OUT:-$PAPERNET_ROOT/deploy/windows}"
 CARGO="${CARGO:-/root/.cargo/bin/cargo}"
 RUSTUP="${RUSTUP:-/root/.cargo/bin/rustup}"
+VERSION="$(papernet_version)"
+WIN_EXE="papernet-teacher-${VERSION}.exe"
 
 if ! command -v "$LINKER" >/dev/null 2>&1; then
   echo "缺少交叉编译器 $LINKER 。Debian/Ubuntu 安装: gcc-mingw-w64-x86-64" >&2
@@ -18,13 +22,14 @@ export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$LINKER"
 
 "$RUSTUP" target add "$TARGET"
 "$CARGO" build --release -p papernet-teacher --target "$TARGET"
-bash "$ROOT/scripts/build-web.sh"
+COMPILED_AT="$(papernet_now)"
+bash "$PAPERNET_ROOT/scripts/build-web.sh"
 
 mkdir -p "$OUT"
-cp "$ROOT/target/$TARGET/release/papernet-teacher.exe" "$OUT/papernet-teacher.exe"
+cp "$PAPERNET_ROOT/target/$TARGET/release/papernet-teacher.exe" "$OUT/$WIN_EXE"
 mkdir -p "$OUT/teacher" "$OUT/student"
-cp -a "$ROOT/dist/teacher/." "$OUT/teacher/"
-cp -a "$ROOT/dist/student/." "$OUT/student/"
+cp -a "$PAPERNET_ROOT/dist/teacher/." "$OUT/teacher/"
+cp -a "$PAPERNET_ROOT/dist/student/." "$OUT/student/"
 
 LIBGCC="$("$LINKER" -print-file-name=libgcc_s_seh-1.dll)"
 if [[ -f "$LIBGCC" ]]; then
@@ -38,11 +43,15 @@ if [[ -f "$PTHREAD" ]]; then
   cp "$PTHREAD" "$OUT/libwinpthread-1.dll"
 fi
 
+PACKED_AT="$(papernet_now)"
+INFO="$(papernet_pack_info_text "$VERSION" "$COMPILED_AT" "$PACKED_AT" "Windows x86_64")"
+
 # CRLF batch file; use goto instead of parenthesized if/else blocks.
-python3 - "$OUT/启动教室.bat" <<'PY'
+python3 - "$OUT/启动教室.bat" "$WIN_EXE" <<'PY'
 from pathlib import Path
 import sys
-text = """@echo off
+exe = sys.argv[2]
+text = f"""@echo off
 cd /d "%~dp0"
 set PAPERNET_BIND=0.0.0.0:8088
 set PAPERNET_DATA_DIR=%~dp0data
@@ -51,7 +60,7 @@ echo PaperNet 教室
 echo 教师机  http://本机IP:8088/teacher/
 echo 学生机  http://本机IP:8088/student/
 echo 健康检查 http://本机IP:8088/api/v1/health
-papernet-teacher.exe
+{exe}
 if errorlevel 1 goto fail
 goto end
 :fail
@@ -62,10 +71,13 @@ pause
 Path(sys.argv[1]).write_bytes(text.replace("\n", "\r\n").encode("gbk", errors="replace"))
 PY
 
-python3 - "$OUT/使用说明.txt" <<'PY'
+python3 - "$OUT/使用说明.txt" "$INFO" <<'PY'
 from pathlib import Path
 import sys
-text = """PaperNet 教室（Windows 教师机）
+info = sys.argv[2]
+text = f"""PaperNet 教室（Windows 教师机）
+
+{info}
 
 把本文件夹整份拷到教师电脑，不要只拷 exe。
 双击「启动教室.bat」。
@@ -83,3 +95,4 @@ Path(sys.argv[1]).write_bytes(text.replace("\n", "\r\n").encode("utf-8-sig"))
 PY
 
 echo "Windows 教室包: $OUT"
+echo "版本 $VERSION  $WIN_EXE"
