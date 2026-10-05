@@ -233,7 +233,7 @@ function routerBench(screen: ClaimedScreen): string {
   return `
     <section class="bench" data-role="router">
       ${arpTable(screen)}
-      ${frameCard(screen.frame, "router")}
+      ${screen.mode === "simulation" ? "" : frameCard(screen.frame, "router")}
       ${screen.mode === "simulation" && screen.frame ? forwardForm(screen) : ""}
       ${notice(screen.notice)}
     </section>
@@ -371,12 +371,35 @@ function macTableRows(screen: ClaimedScreen, highlightMac?: string): string {
 
 function switchMacLookup(screen: ClaimedScreen, dstMac?: string): string {
   return `
-    <aside class="fwd-mac" aria-label="MAC 地址表">
+    <aside class="fwd-mac fwd-lookup" aria-label="MAC 地址表">
       <h4>MAC 地址表</h4>
       <div class="mac-scroll">
         <table class="mac-table">
           <thead><tr><th>端口</th><th>MAC</th></tr></thead>
           <tbody>${macTableRows(screen, dstMac)}</tbody>
+        </table>
+      </div>
+    </aside>`;
+}
+
+function routerPortLookup(screen: ClaimedScreen, dstIp?: string): string {
+  const rows = screen.device.ports;
+  const body = rows.length
+    ? rows
+        .map((port) => {
+          const ip = port.ip || "";
+          const match = Boolean(dstIp) && Boolean(ip) && sameCClass(ip, dstIp || "");
+          return `<tr${match ? ' data-hit="true"' : ""}><td>${escapeHtml(port.id)}</td><td>${escapeHtml(ip || "未配置")}</td></tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="2">暂无</td></tr>`;
+  return `
+    <aside class="fwd-lookup" aria-label="端口地址表">
+      <h4>端口地址表</h4>
+      <div class="mac-scroll">
+        <table class="mac-table">
+          <thead><tr><th>端口</th><th>IP</th></tr></thead>
+          <tbody>${body}</tbody>
         </table>
       </div>
     </aside>`;
@@ -388,7 +411,9 @@ function forwardForm(screen: ClaimedScreen): string {
   const frame = screen.frame;
   const pending = frame ? [frame, ...screen.frameQueue] : screen.frameQueue;
   const byMac = kind === "switch";
+  const byIp = kind === "router";
   const hint = byMac ? "根据目的 MAC 选择转发端口" : "根据目的 IP 选择转发端口";
+  const lookup = byMac ? "mac" : byIp ? "ip" : "";
   const queue = `
     <aside class="fwd-queue" aria-label="待转发帧">
       <h4>待转发帧</h4>
@@ -419,16 +444,20 @@ function forwardForm(screen: ClaimedScreen): string {
     : "";
   return `
     <div class="dlg-backdrop" data-open="true">
-      <form class="forward-form dlg"${byMac ? ' data-lookup="mac"' : ""}>
+      <form class="forward-form dlg"${lookup ? ` data-lookup="${lookup}"` : ""}>
         <header class="dlg-hd" data-fwd-drag>
           <h3>转发数据帧</h3>
           <span class="mode-pill">模拟选口 · ${escapeHtml(screen.device.id)}</span>
         </header>
-        <div class="fwd-body"${byMac ? ' data-lookup="mac"' : ""}>
+        <div class="fwd-body"${lookup ? ` data-lookup="${lookup}"` : ""}>
           ${queue}
           <div class="fwd-main">
             <p class="dlg-sub">${hint}</p>
-            ${frameRows}
+            ${
+              byIp && frame
+                ? `<p class="frame-note">解包查看目的 IP，再重新打包转发</p>${routerFrameSteps(frame)}`
+                : frameRows
+            }
             <p>选择出端口</p>
             <div class="fwd-grid">
               ${ports
@@ -441,7 +470,7 @@ function forwardForm(screen: ClaimedScreen): string {
             ${screen.notice === "端口不正确" ? `<p class="notice wrong-port">端口不正确</p>` : ""}
             <p class="hint">选错口时提示「端口不正确」；帧留在本机</p>
           </div>
-          ${byMac ? switchMacLookup(screen, frame?.dst_mac) : ""}
+          ${byMac ? switchMacLookup(screen, frame?.dst_mac) : byIp ? routerPortLookup(screen, frame?.dst_ip) : ""}
         </div>
       </form>
     </div>

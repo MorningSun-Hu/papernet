@@ -1234,7 +1234,7 @@ main {
   min-width: 0;
   overflow: hidden;
 }
-.forward-form.dlg[data-lookup="mac"] {
+.forward-form.dlg[data-lookup] {
   width: min(1100px, 100%);
 }
 .dlg-backdrop:has(.forward-form) {
@@ -1255,12 +1255,14 @@ main {
   align-items: start;
   min-width: 0;
 }
-.fwd-body[data-lookup="mac"] {
+.fwd-body[data-lookup] {
   grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(210px, 280px);
 }
 .fwd-main {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: min(68vh, 620px);
 }
 .fwd-queue {
   border-right: 1px solid var(--line);
@@ -1308,21 +1310,25 @@ main {
 .fwd-q-empty {
   color: var(--muted);
 }
-.fwd-mac {
+.fwd-mac,
+.fwd-lookup {
   border-left: 1px solid var(--line);
   padding-left: 14px;
   min-width: 0;
 }
-.fwd-mac h4 {
+.fwd-mac h4,
+.fwd-lookup h4 {
   margin: 0 0 10px;
   color: var(--cyan);
   font-size: 0.92rem;
 }
-.fwd-mac .mac-scroll {
+.fwd-mac .mac-scroll,
+.fwd-lookup .mac-scroll {
   flex: none;
   max-height: min(42vh, 380px);
 }
-.fwd-mac .mac-table tr[data-hit="true"] td {
+.fwd-mac .mac-table tr[data-hit="true"] td,
+.fwd-lookup .mac-table tr[data-hit="true"] td {
   color: var(--cyan);
   background: rgba(34, 211, 238, 0.12);
 }
@@ -1341,10 +1347,11 @@ main {
   }
 }
 @media (max-width: 900px) {
-  .fwd-body[data-lookup="mac"] {
+  .fwd-body[data-lookup] {
     grid-template-columns: 1fr;
   }
-  .fwd-mac {
+  .fwd-mac,
+  .fwd-lookup {
     border-left: 0;
     border-top: 1px solid var(--line);
     padding-left: 0;

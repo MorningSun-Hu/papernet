@@ -281,12 +281,18 @@ assert.match(renderWorkbench(routerHold), /模拟选口/);
 assert.match(renderWorkbench(routerHold), /R1\/02/);
 assert.doesNotMatch(renderWorkbench(routerHold), /fwd-mac/);
 assert.doesNotMatch(renderWorkbench(routerHold), /MAC 地址表/);
+assert.match(renderWorkbench(routerHold), /fwd-lookup/);
+assert.match(renderWorkbench(routerHold), /端口地址表/);
+assert.match(renderWorkbench(routerHold), /data-hit="true"/);
+assert.match(renderWorkbench(routerHold), /192\.168\.2\.1/);
 
 assert.match(renderWorkbench(routerHold), /解包查看目的 IP/);
 assert.match(renderWorkbench(routerHold), /data-step="recv"/);
 assert.match(renderWorkbench(routerHold), /data-step="net"/);
 assert.match(renderWorkbench(routerHold), /data-step="pack"/);
 assert.match(renderWorkbench(routerHold), /选出口后改写 MAC/);
+assert.doesNotMatch(renderWorkbench(routerHold), /<h2>网络帧<\/h2>/);
+assert.doesNotMatch(renderWorkbench(routerHold), /dlg-frame/);
 
 const repacked = applyWsEvent(routerHold, {
   event: "frame.repack",
