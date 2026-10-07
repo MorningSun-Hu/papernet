@@ -491,7 +491,7 @@ function bindTopoTools(): void {
     if (!snap) {
       return;
     }
-    layout = arrangeTopo(lastView ?? buildTopo(snap, layout));
+    layout = arrangeTopo(snap);
     render();
   });
 }
@@ -570,6 +570,7 @@ function bindTopoDrag(): void {
   if (!topo || !world) {
     return;
   }
+  const fit = topo.querySelector<HTMLElement>(".topo-fit") ?? world;
   for (const g of topo.querySelectorAll<HTMLElement>(".node")) {
     g.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || !snap) {
@@ -581,11 +582,11 @@ function bindTopoDrag(): void {
       }
       ev.preventDefault();
       const origin = lastView?.nodes.find((n) => n.id === id);
-      const pt = pointerToLayout(world, ev);
+      const pt = pointerToLayout(fit, ev);
       const dx = pt.x - (origin?.x ?? 0);
       const dy = pt.y - (origin?.y ?? 0);
       const move = (e: PointerEvent) => {
-        const next = pointerToLayout(world, e);
+        const next = pointerToLayout(fit, e);
         layout = { ...layout, [id]: { x: next.x - dx, y: next.y - dy } };
         if (!snap) {
           return;

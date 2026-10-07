@@ -189,76 +189,32 @@ function sortDevices(devices: TopoDevice[]): TopoDevice[] {
   return [...devices].sort((a, b) => compareDeviceId(a.id, b.id));
 }
 
-export function arrangeTopo(view: TopoView, rowTol = 80): TopoLayout {
-  const nodes = [...view.nodes];
-  if (!nodes.length) {
-    return {};
-  }
-  nodes.sort((a, b) => a.y - b.y || a.x - b.x);
-  const rows: TopoNode[][] = [];
-  for (const node of nodes) {
-    const last = rows[rows.length - 1];
-    if (!last || Math.abs(node.y - last[0].y) > rowTol) {
-      rows.push([node]);
-    } else {
-      last.push(node);
-    }
-  }
-  const next: TopoLayout = {};
-  const gap = spacingForCount(nodes.length).gap;
-  for (const row of rows) {
-    row.sort((a, b) => a.x - b.x);
-    const y = Math.min(...row.map((n) => n.y));
-    const n = row.length;
-    if (n === 1) {
-      next[row[0].id] = { x: row[0].x, y };
-      continue;
-    }
-    const left = Math.min(...row.map((n) => n.x));
-    const right = Math.max(...row.map((n) => n.x));
-    const span = Math.max(gap * (n - 1), right - left);
-    row.forEach((node, i) => {
-      next[node.id] = { x: left + (span * i) / (n - 1), y };
-    });
-  }
-  return next;
+export function arrangeTopo(snap: TopoSnapshot): TopoLayout {
+  return autoLayout(snap).positions;
 }
 
 export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView {
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
-  const row: Record<Exclude<DeviceKind, "tap"> | "tap-free", TopoDevice[]> = {
-    pc: [],
-    switch: [],
-    router: [],
-    "tap-free": [],
-  };
+  const auto = autoLayout(snap);
+  const nodes: TopoNode[] = [];
   for (const device of snap.devices) {
     if (device.kind === "tap" && attached.has(device.id)) {
       continue;
     }
-    if (device.kind === "tap") {
-      row["tap-free"].push(device);
-    } else {
-      row[device.kind].push(device);
-    }
-  }
-  const widest = Math.max(row.pc.length, row.switch.length + row["tap-free"].length, row.router.length);
-  const { maxCols, gap, rowDy, pad } = spacingForCount(widest);
-  const width = Math.max(960, pad * 2 + gap * (maxCols - 1));
-  const nodes: TopoNode[] = [];
-  let y = 90;
-  y = placeWrapped(nodes, sortDevices(row.router), y, width, gap, maxCols, rowDy);
-  y = placeWrapped(nodes, [...sortDevices(row.switch), ...sortDevices(row["tap-free"])], y, width, gap, maxCols, rowDy);
-  y = placeWrapped(nodes, sortDevices(row.pc), y, width, gap, maxCols, rowDy);
-  const height = Math.max(640, y + 80);
-  for (const node of nodes) {
-    const pos = layout[node.id];
-    if (pos) {
-      node.x = pos.x;
-      node.y = pos.y;
-    }
+    const pos = layout[device.id] ?? auto.positions[device.id] ?? { x: auto.width / 2, y: 90 };
+    nodes.push({
+      id: device.id,
+      kind: device.kind,
+      x: pos.x,
+      y: pos.y,
+      labels: deviceLabels(device),
+      onLink: null,
+      claimed: device.claimed,
+    });
   }
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  let width = auto.width;
+  let height = auto.height;
   for (const device of snap.devices) {
     if (device.kind !== "tap") {
       continue;
@@ -344,6 +300,233 @@ export function topoDensity(nodeCount: number): 0 | 1 | 2 {
     return 1;
   }
   return 0;
+}
+
+type LayoutTree = {
+  id: string;
+  kind: DeviceKind;
+  children: LayoutTree[];
+};
+
+function autoLayout(snap: TopoSnapshot): { positions: TopoLayout; width: number; height: number } {
+  const attached = new Set(snap.tapAttach.map((a) => a.tap_id));
+  const byId = new Map(snap.devices.map((d) => [d.id, d]));
+  const adj = adjacency(snap);
+  const visited = new Set<string>();
+
+  const grow = (id: string, parentId: string): LayoutTree => {
+    visited.add(id);
+    const kids = (adj.get(id) ?? []).filter((n) => {
+      if (n === parentId || visited.has(n)) {
+        return false;
+      }
+      const k = byId.get(n)?.kind;
+      return Boolean(k && k !== "tap");
+    });
+    kids.sort((a, b) => {
+      const ra = kindRank(byId.get(a)?.kind ?? "pc");
+      const rb = kindRank(byId.get(b)?.kind ?? "pc");
+      if (ra !== rb) {
+        return ra - rb;
+      }
+      return compareDeviceId(a, b);
+    });
+    return {
+      id,
+      kind: byId.get(id)?.kind ?? "pc",
+      children: kids.map((kid) => grow(kid, id)),
+    };
+  };
+
+  const routers = sortDevices(snap.devices.filter((d) => d.kind === "router"));
+  const routerTrees = routers.map((d) => grow(d.id, ""));
+  const orphanTrees: LayoutTree[] = [];
+  while (true) {
+    const rest = snap.devices.filter(
+      (d) => d.kind !== "tap" && !visited.has(d.id) && (adj.get(d.id)?.length ?? 0) > 0,
+    );
+    if (!rest.length) {
+      break;
+    }
+    const switches = rest.filter((d) => d.kind === "switch").sort((a, b) => compareDeviceId(a.id, b.id));
+    const fallback = [...rest].sort((a, b) => compareDeviceId(a.id, b.id));
+    orphanTrees.push(grow((switches[0] ?? fallback[0]).id, ""));
+  }
+
+  const isolates = snap.devices
+    .filter((d) => {
+      if (attached.has(d.id) || d.kind === "router" || visited.has(d.id)) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const rk = kindRank(a.kind) - kindRank(b.kind);
+      return rk !== 0 ? rk : compareDeviceId(a.id, b.id);
+    });
+
+  const widest = Math.max(isolates.length, snap.devices.length, 1);
+  const { maxCols, gap, rowDy, pad } = spacingForCount(widest);
+  const routerPlaced = routerTrees.map(layoutCluster);
+  const orphanPlaced = orphanTrees.map(layoutCluster);
+  const gapX = 56;
+  const routerW = sumWidth(routerPlaced, gapX);
+  const orphanW = sumWidth(orphanPlaced, gapX);
+  const treesTotal = routerW + (orphanPlaced.length && routerPlaced.length ? gapX : 0) + orphanW;
+  const isolateSpan = isolates.length ? gap * (Math.min(isolates.length, maxCols) - 1) : 0;
+  const width = Math.max(960, pad * 2 + Math.max(treesTotal, isolateSpan));
+  const positions: TopoLayout = {};
+  const yRouter = 90;
+  let maxBottom = 0;
+  let cursor = (width - treesTotal) / 2;
+  for (const placed of routerPlaced) {
+    stampCluster(placed, cursor, yRouter, positions);
+    cursor += placed.width + gapX;
+    maxBottom = Math.max(maxBottom, yRouter + placed.height);
+  }
+  const yOrphan = routerPlaced.length ? yRouter + 80 : 90;
+  for (const placed of orphanPlaced) {
+    stampCluster(placed, cursor, yOrphan, positions);
+    cursor += placed.width + gapX;
+    maxBottom = Math.max(maxBottom, yOrphan + placed.height);
+  }
+  if (routerPlaced.length) {
+    maxBottom = Math.max(maxBottom, yRouter);
+  }
+
+  if (isolates.length) {
+    const y0 = maxBottom > 0 ? maxBottom + rowDy : 90;
+    const dummy: TopoNode[] = [];
+    const yEnd = placeWrapped(dummy, isolates, y0, width, gap, maxCols, rowDy);
+    for (const node of dummy) {
+      positions[node.id] = { x: node.x, y: node.y };
+    }
+    maxBottom = yEnd;
+  }
+
+  return { positions, width, height: Math.max(640, maxBottom + 80) };
+}
+
+type ClusterBox = {
+  positions: TopoLayout;
+  width: number;
+  height: number;
+};
+
+function sumWidth(boxes: ClusterBox[], gapX: number): number {
+  if (!boxes.length) {
+    return 0;
+  }
+  return boxes.reduce((s, b) => s + b.width, 0) + gapX * (boxes.length - 1);
+}
+
+function stampCluster(box: ClusterBox, ox: number, oy: number, out: TopoLayout): void {
+  for (const [id, pos] of Object.entries(box.positions)) {
+    out[id] = { x: Math.round(pos.x + ox), y: Math.round(pos.y + oy) };
+  }
+}
+
+function starMetrics(n: number): { inner: number; outer: number } {
+  if (n <= 1) {
+    return { inner: 150, outer: 150 };
+  }
+  const innerCount = Math.ceil(n / 2);
+  const minChord = 128;
+  const inner = Math.max(150, Math.ceil(minChord / (2 * Math.sin(Math.PI / Math.max(innerCount, 2)))));
+  return { inner, outer: inner + 88 };
+}
+
+function placeStar(cx: number, cy: number, pcs: LayoutTree[], inner: number, outer: number, out: TopoLayout): void {
+  const n = pcs.length;
+  if (n === 1) {
+    out[pcs[0].id] = { x: cx, y: cy + inner };
+    return;
+  }
+  const start = -Math.PI / 2 + Math.PI / n;
+  for (let i = 0; i < n; i += 1) {
+    const r = i % 2 === 0 ? inner : outer;
+    const a = start + (2 * Math.PI * i) / n;
+    out[pcs[i].id] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  }
+}
+
+function layoutStarHub(id: string, pcs: LayoutTree[]): ClusterBox {
+  const n = pcs.length;
+  if (!n) {
+    return { positions: { [id]: { x: 80, y: 40 } }, width: 160, height: 80 };
+  }
+  const { inner, outer } = starMetrics(n);
+  const pad = 56;
+  const width = 2 * outer + pad * 2;
+  const height = 2 * outer + pad * 2;
+  const hubX = width / 2;
+  const hubY = height / 2;
+  const positions: TopoLayout = { [id]: { x: hubX, y: hubY } };
+  placeStar(hubX, hubY, pcs, inner, outer, positions);
+  return { positions, width, height };
+}
+
+function layoutCluster(tree: LayoutTree): ClusterBox {
+  const pcs = tree.children.filter((c) => c.kind === "pc" && !c.children.length);
+  const rest = tree.children.filter((c) => c.kind !== "pc" || c.children.length);
+  if (!rest.length) {
+    return layoutStarHub(tree.id, pcs);
+  }
+  const kids = rest.map(layoutCluster);
+  const gapX = 56;
+  const stagger = 96;
+  const star = pcs.length ? starMetrics(pcs.length) : { inner: 0, outer: 0 };
+  const rowW = sumWidth(kids, gapX);
+  const starW = pcs.length ? 2 * star.outer + 112 : 0;
+  const width = Math.max(rowW, starW, 160);
+  const hubY = pcs.length ? star.outer + 56 : 40;
+  const hubX = width / 2;
+  const positions: TopoLayout = { [tree.id]: { x: hubX, y: hubY } };
+  if (pcs.length) {
+    placeStar(hubX, hubY, pcs, star.inner, star.outer, positions);
+  }
+  const rowTop = hubY + Math.max(120, pcs.length ? star.outer + 48 : 0);
+  let x = (width - rowW) / 2;
+  let height = hubY + 80;
+  kids.forEach((k, i) => {
+    const oy = rowTop + (i % 2 === 1 ? stagger : 0);
+    stampCluster(k, x, oy, positions);
+    height = Math.max(height, oy + k.height);
+    x += k.width + gapX;
+  });
+  return { positions, width, height };
+}
+
+function kindRank(kind: DeviceKind): number {
+  if (kind === "switch") {
+    return 0;
+  }
+  if (kind === "router") {
+    return 1;
+  }
+  if (kind === "pc") {
+    return 2;
+  }
+  return 3;
+}
+
+function adjacency(snap: TopoSnapshot): Map<string, string[]> {
+  const adj = new Map<string, string[]>();
+  const add = (a: string, b: string) => {
+    if (!a || !b || a === b) {
+      return;
+    }
+    const list = adj.get(a) ?? [];
+    if (!list.includes(b)) {
+      list.push(b);
+    }
+    adj.set(a, list);
+  };
+  for (const link of snap.links) {
+    add(ownerOf(link.port_a), ownerOf(link.port_b));
+    add(ownerOf(link.port_b), ownerOf(link.port_a));
+  }
+  return adj;
 }
 
 function spacingForCount(widestRow: number): { maxCols: number; gap: number; rowDy: number; pad: number } {
