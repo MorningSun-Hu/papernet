@@ -9,7 +9,7 @@
 - 学生浏览器上课，Windows 教室只需教师电脑跑一个程序
 - 聊天、ping、模拟帧都走教师机实时判断
 
-当前版本：`0.1.0`。远程仓库：https://github.com/MorningSun-Hu/papernet
+当前版本：`0.2.0`。远程仓库：https://github.com/MorningSun-Hu/papernet
 
 ## 文档导航
 

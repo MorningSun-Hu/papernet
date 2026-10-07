@@ -42,4 +42,4 @@ bash scripts/build-web.sh
 
 教室 Linux 包与 Windows 包步骤见 `docs/09-发布与部署说明.md`。
 
-当前版本：0.1.0
+当前版本：0.2.0
