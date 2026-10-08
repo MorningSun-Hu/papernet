@@ -11,7 +11,7 @@
 ## 技术栈
 
 **语言与运行时**
-- Rust 2021，Cargo workspace，版本 0.2.0
+- Rust 2021，Cargo workspace，版本 0.2.1
 - TypeScript + Vite 5（教师/学生 Web）
 
 **框架**
