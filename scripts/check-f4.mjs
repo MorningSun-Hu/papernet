@@ -43,6 +43,8 @@ assert.match(teacherMain, /<h3>已领取<\/h3>/);
 assert.match(teacherMain, /<h3>未领取<\/h3>/);
 assert.match(teacherMain, /topoZoom/);
 assert.match(teacherMain, /stepper\("routerPorts", "路由器口数", form.routerPorts, 1, 3\)/);
+assert.match(teacherMain, /form.routerPorts !== ports/);
+assert.match(teacherMain, /patchTopo\(topo, lastView\)/);
 
 assert.match(teacherMain, /网络分流器/);
 assert.equal(teacherMain.includes("特殊双口交换机"), false);
@@ -90,11 +92,11 @@ const tap1 = view.nodes.find((n) => n.id === "TAP1");
 assert.ok(r1 && s1 && pc1 && tap1);
 assert.ok(r1.y < s1.y);
 assert.ok(s1.y < pc1.y);
-assert.ok(pc1.y < tap1.y);
+assert.equal(s1.y, tap1.y);
+assert.ok(s1.x < tap1.x);
 assert.equal(r1.x, view.width / 2);
-assert.equal(s1.x, view.width / 2);
+assert.equal((s1.x + tap1.x) / 2, view.width / 2);
 assert.equal(pc1.x, view.width / 2);
-assert.equal(tap1.x, view.width / 2);
 assert.ok(view.nodes.every((n) => n.labels[0] === n.id));
 assert.ok(view.nodes.find((n) => n.id === "PC1")?.labels.some((l) => l.includes("PC1/01")));
 assert.ok(view.nodes.find((n) => n.id === "R1")?.labels.some((l) => l.includes("192.168.1.1")));
@@ -230,9 +232,8 @@ const custom = buildTopo(snap, { PC1: { x: 40, y: 500 }, R1: { x: 200, y: 80 } }
 assert.equal(custom.nodes.find((n) => n.id === "PC1")?.y, 500);
 const arranged = arrangeTopo(snap);
 const restored = buildTopo(snap, arranged);
-assert.equal(arranged.PC1?.y, view.nodes.find((n) => n.id === "PC1")?.y);
-assert.equal(arranged.R1?.y, view.nodes.find((n) => n.id === "R1")?.y);
-assert.equal(restored.nodes.find((n) => n.id === "PC1")?.y, view.nodes.find((n) => n.id === "PC1")?.y);
+assert.notEqual(arranged.PC1?.y, view.nodes.find((n) => n.id === "PC1")?.y);
+assert.equal(restored.nodes.find((n) => n.id === "PC1")?.y, arranged.PC1?.y);
 assert.notEqual(arranged.PC1?.y, 500);
 
 const clustered = parseTopoSnapshot({
@@ -259,7 +260,19 @@ const clustered = parseTopoSnapshot({
   tap_attach: [],
 });
 assert.ok(clustered);
-const clusteredView = buildTopo(clustered);
+const clusteredGrid = buildTopo(clustered);
+const g = Object.fromEntries(clusteredGrid.nodes.map((node) => [node.id, node]));
+assert.equal(g.S1.y, g.S2.y);
+assert.equal(g.S1.y, g.S3.y);
+assert.equal(g.S3.y, g.TAP1.y);
+assert.ok(g.R1.y < g.S1.y);
+assert.ok(g.S1.y < g.PC1.y);
+const unlinked = buildTopo({ ...clustered, links: [] });
+for (const id of ["R1", "S1", "S2", "S3", "PC1", "PC2", "PC3", "PC4", "TAP1"]) {
+  assert.equal(clusteredGrid.nodes.find((node) => node.id === id)?.x, unlinked.nodes.find((node) => node.id === id)?.x);
+  assert.equal(clusteredGrid.nodes.find((node) => node.id === id)?.y, unlinked.nodes.find((node) => node.id === id)?.y);
+}
+const clusteredView = buildTopo(clustered, arrangeTopo(clustered));
 const n = Object.fromEntries(clusteredView.nodes.map((node) => [node.id, node]));
 assert.ok(n.R1.y < n.S1.y && n.R1.y < n.S2.y);
 assert.notEqual(n.S1.y, n.S2.y);

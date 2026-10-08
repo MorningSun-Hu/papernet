@@ -337,6 +337,15 @@ function setScreen(next: Screen): void {
   }
 }
 
+function applyLivePatch(next: Screen): void {
+  if (selectedPortId && next.kind === "claimed" && screen.kind === "claimed") {
+    screen = next;
+    persistScreen(next);
+    return;
+  }
+  setScreen(next);
+}
+
 async function refreshPeers(connectionId: string): Promise<void> {
   try {
     peers = await listPeers(connectionId);
@@ -383,7 +392,7 @@ function openSocket(connectionId: string): void {
       if (next === screen) {
         return;
       }
-      setScreen(next);
+      applyLivePatch(next);
     } catch {
       /* ignore malformed frames */
     }
@@ -766,6 +775,17 @@ function moveForwardDlg(ev: PointerEvent): void {
 app.addEventListener("pointerdown", (ev) => {
   const t = ev.target as HTMLElement;
   backdropArmed = t.classList.contains("dlg-backdrop") && !t.querySelector(".forward-form");
+  const portBtn = t.closest<HTMLElement>(".port");
+  if (
+    portBtn?.dataset.port &&
+    !t.closest(".dlg") &&
+    screen.kind === "claimed" &&
+    screen.device.kind !== "tap"
+  ) {
+    selectedPortId = portBtn.dataset.port;
+    render();
+    return;
+  }
   const handle = t.closest<HTMLElement>("[data-fwd-drag]");
   const dlg = handle?.closest<HTMLElement>(".forward-form.dlg");
   if (dlg) {

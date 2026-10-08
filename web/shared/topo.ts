@@ -195,26 +195,14 @@ export function arrangeTopo(snap: TopoSnapshot): TopoLayout {
 
 export function buildTopo(snap: TopoSnapshot, layout: TopoLayout = {}): TopoView {
   const attached = new Map(snap.tapAttach.map((a) => [a.tap_id, a.link_id]));
-  const auto = autoLayout(snap);
-  const nodes: TopoNode[] = [];
-  for (const device of snap.devices) {
-    if (device.kind === "tap" && attached.has(device.id)) {
-      continue;
-    }
-    const pos = layout[device.id] ?? auto.positions[device.id] ?? { x: auto.width / 2, y: 90 };
-    nodes.push({
-      id: device.id,
-      kind: device.kind,
-      x: pos.x,
-      y: pos.y,
-      labels: deviceLabels(device),
-      onLink: null,
-      claimed: device.claimed,
-    });
-  }
+  const grid = defaultGrid(snap, attached);
+  const nodes: TopoNode[] = grid.nodes.map((node) => {
+    const pos = layout[node.id];
+    return pos ? { ...node, x: pos.x, y: pos.y } : node;
+  });
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  let width = auto.width;
-  let height = auto.height;
+  const width = grid.width;
+  const height = grid.height;
   for (const device of snap.devices) {
     if (device.kind !== "tap") {
       continue;
@@ -307,6 +295,34 @@ type LayoutTree = {
   kind: DeviceKind;
   children: LayoutTree[];
 };
+
+function defaultGrid(snap: TopoSnapshot, attached: Map<string, string>): { nodes: TopoNode[]; width: number; height: number } {
+  const row: Record<Exclude<DeviceKind, "tap"> | "tap-free", TopoDevice[]> = {
+    pc: [],
+    switch: [],
+    router: [],
+    "tap-free": [],
+  };
+  for (const device of snap.devices) {
+    if (device.kind === "tap" && attached.has(device.id)) {
+      continue;
+    }
+    if (device.kind === "tap") {
+      row["tap-free"].push(device);
+    } else {
+      row[device.kind].push(device);
+    }
+  }
+  const widest = Math.max(row.pc.length, row.switch.length + row["tap-free"].length, row.router.length);
+  const { maxCols, gap, rowDy, pad } = spacingForCount(widest);
+  const width = Math.max(960, pad * 2 + gap * (maxCols - 1));
+  const nodes: TopoNode[] = [];
+  let y = 90;
+  y = placeWrapped(nodes, sortDevices(row.router), y, width, gap, maxCols, rowDy);
+  y = placeWrapped(nodes, [...sortDevices(row.switch), ...sortDevices(row["tap-free"])], y, width, gap, maxCols, rowDy);
+  y = placeWrapped(nodes, sortDevices(row.pc), y, width, gap, maxCols, rowDy);
+  return { nodes, width, height: Math.max(640, y + 80) };
+}
 
 function autoLayout(snap: TopoSnapshot): { positions: TopoLayout; width: number; height: number } {
   const attached = new Set(snap.tapAttach.map((a) => a.tap_id));

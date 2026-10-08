@@ -356,8 +356,11 @@ function bind(): void {
   });
   roster?.addEventListener("change", () => {
     clampRosterInputs(roster, true);
+    const ports = form.routerPorts;
     syncRosterForm(roster);
-    render();
+    if (form.routerPorts !== ports) {
+      render();
+    }
   });
   roster?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -694,7 +697,11 @@ function openSocket(): void {
           return;
         }
         snap = next;
-        render();
+        lastView = buildTopo(snap, layout);
+        const topo = app.querySelector<HTMLElement>(".topo");
+        if (!topo || !patchTopo(topo, lastView)) {
+          render();
+        }
       }
     } catch {
       /* ignore */

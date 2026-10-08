@@ -35,23 +35,42 @@ export function renderCanvas(
   return { html, view };
 }
 
-export function patchTopo(root: HTMLElement, view: TopoView): void {
+export function patchTopo(root: HTMLElement, view: TopoView): boolean {
+  if (root.querySelectorAll(".node").length !== view.nodes.length) {
+    return false;
+  }
+  if (root.querySelectorAll(".topo-wires line").length !== view.edges.length) {
+    return false;
+  }
   for (const node of view.nodes) {
     const el = root.querySelector<HTMLElement>(`.node[data-id="${cssAttr(node.id)}"]`);
-    if (el) {
-      el.style.left = `${(node.x / view.width) * 100}%`;
-      el.style.top = `${(node.y / view.height) * 100}%`;
+    if (!el) {
+      return false;
+    }
+    el.style.left = `${(node.x / view.width) * 100}%`;
+    el.style.top = `${(node.y / view.height) * 100}%`;
+    el.dataset.claimed = String(node.claimed);
+    const nid = el.querySelector(".nid");
+    const nmeta = el.querySelector(".nmeta");
+    if (nid) {
+      nid.textContent = node.labels[0] || node.id;
+    }
+    if (nmeta) {
+      nmeta.textContent = node.labels.slice(1).join(" · ");
     }
   }
   for (const edge of view.edges) {
     const line = root.querySelector(`line[data-link="${cssAttr(edge.id)}"]`);
-    if (line) {
-      line.setAttribute("x1", String(edge.x1));
-      line.setAttribute("y1", String(edge.y1));
-      line.setAttribute("x2", String(edge.x2));
-      line.setAttribute("y2", String(edge.y2));
+    if (!line) {
+      return false;
     }
+    line.setAttribute("x1", String(edge.x1));
+    line.setAttribute("y1", String(edge.y1));
+    line.setAttribute("x2", String(edge.x2));
+    line.setAttribute("y2", String(edge.y2));
+    line.setAttribute("class", `link ${edge.style}`);
   }
+  return true;
 }
 
 function cssAttr(value: string): string {
