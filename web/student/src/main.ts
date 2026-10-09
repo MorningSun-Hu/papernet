@@ -15,7 +15,7 @@ import {
   type Screen,
 } from "@shared/claim";
 import { linuxPing, renderArpTable, renderComposeDialog, renderPcChat, renderPcHosts, renderWorkbench, withoutTapPorts } from "@shared/workbench";
-import { brandLockup, hudClock, studentNav } from "@shared/brand";
+import { brandLockup, hudClock, hudVersion, studentNav } from "@shared/brand";
 import {
   ApiError,
   forwardFrame,
@@ -153,6 +153,7 @@ function board(message: string, tone: string): string {
   return `
     <main class="board ${tone}">
       <p class="eyebrow">纸上谈网 · 学生席</p>
+      ${hudVersion()}
       <p class="copy" data-screen="${tone}">${escapeHtml(message)}</p>
     </main>
   `;
@@ -180,6 +181,7 @@ function claimedShell(s: Extract<Screen, { kind: "claimed" }>): string {
         ${brandLockup()}
         ${studentNav(s.device.kind)}
         <p class="hud-clock">${hudClock()}</p>
+        ${hudVersion()}
         <span class="hud-user">学生</span>
       </header>
       <h1 class="hero-title">${escapeHtml(s.device.kind === "pc" ? "主机" : ROLE_LABEL[s.device.kind])} ${escapeHtml(s.device.id)} <span class="mode-pill" data-mode="${s.mode}">${s.mode === "simulation" ? "模拟" : "普通"}</span></h1>

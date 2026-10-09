@@ -2,6 +2,12 @@ export function cubeMark(): string {
   return `<span class="iso-cube" aria-hidden="true"><i class="c-top"></i><i class="c-left"></i><i class="c-right"></i></span>`;
 }
 
+export const APP_VERSION = "0.2.1";
+
+export function hudVersion(): string {
+  return `<p class="hud-ver">v${APP_VERSION}</p>`;
+}
+
 export function brandLockup(): string {
   return `<div class="brand-lockup">${cubeMark()}<div class="brand-copy"><strong>纸上谈网</strong><span>NETWORK LAB</span></div></div>`;
 }

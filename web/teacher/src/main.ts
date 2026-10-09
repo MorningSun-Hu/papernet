@@ -1,6 +1,6 @@
 import "./style.css";
 import { buildInventory, formatClaimRoster, labTestInventory, wsPath } from "@shared/claim";
-import { brandLockup, hudClock } from "@shared/brand";
+import { brandLockup, hudClock, hudVersion } from "@shared/brand";
 import { applyTopoEvent, arrangeTopo, buildTopo, parseTopoSnapshot, type TopoLayout, type TopoSnapshot, type TopoView } from "@shared/topo";
 import { attachTap, clearClassroomId, createClassroom, endClassroom, fetchCurrentClassroomId, fetchSnapshot, loadClassroomId, openClaim, pauseClaim, setMode, unbindDevice } from "./api";
 import { patchTopo, renderCanvas } from "./canvas";
@@ -73,6 +73,7 @@ function render(): void {
           <p class="eyebrow">以实践见真知 · 让网络触手可及</p>
         </div>
         <p class="hud-clock">${hudClock()}</p>
+        ${hudVersion()}
         ${live ? `${modeBar()}${claimToggle()}<button type="button" id="end">结束课堂</button>` : ""}
       </header>
       ${live ? liveDeck(canvas?.html ?? "") : `<div class="topo-empty"><p>暂无拓扑，先确定本课设备</p></div>`}
@@ -137,6 +138,7 @@ function rosterDialog(): string {
           <div>
             <h3>确定本课设备</h3>
             <p class="dlg-sub">课前定员、定设备，创建课堂后本窗口收起。</p>
+            ${hudVersion()}
           </div>
         </header>
         <section class="dlg-block">

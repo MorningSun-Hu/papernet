@@ -48,6 +48,12 @@ const teacherMain = fs.readFileSync(path.join(root, "web/teacher/src/main.ts"), 
 assert.equal(teacherMain.includes("@icons/"), false, "teacher runtime should not load device SVGs");
 assert.ok(fs.existsSync(path.join(root, "web/shared/brand.ts")));
 const brand = fs.readFileSync(path.join(root, "web/shared/brand.ts"), "utf8");
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "web/teacher/package.json"), "utf8"));
+assert.ok(brand.includes(`APP_VERSION = "${pkg.version}"`), "brand version must match package.json");
+assert.ok(teacherMain.includes("hudVersion"));
+assert.ok(studentMain.includes("hudVersion"));
+const packWin = fs.readFileSync(path.join(root, "scripts/pack-windows.sh"), "utf8");
+assert.ok(packWin.includes("echo PaperNet 教室  版本 {version}"));
 for (const label of ["实验环境", "网络拓扑", "工具箱", "帮助文档"]) {
   assert.ok(brand.includes(label), `studentNav missing ${label}`);
 }

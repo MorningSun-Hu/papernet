@@ -47,16 +47,17 @@ PACKED_AT="$(papernet_now)"
 INFO="$(papernet_pack_info_text "$VERSION" "$COMPILED_AT" "$PACKED_AT" "Windows x86_64")"
 
 # CRLF batch file; use goto instead of parenthesized if/else blocks.
-python3 - "$OUT/启动教室.bat" "$WIN_EXE" <<'PY'
+python3 - "$OUT/启动教室.bat" "$WIN_EXE" "$VERSION" <<'PY'
 from pathlib import Path
 import sys
 exe = sys.argv[2]
+version = sys.argv[3]
 text = f"""@echo off
 cd /d "%~dp0"
 set PAPERNET_BIND=0.0.0.0:8088
 set PAPERNET_DATA_DIR=%~dp0data
 set PAPERNET_UI_DIR=%~dp0
-echo PaperNet 教室
+echo PaperNet 教室  版本 {version}
 echo 教师机  http://本机IP:8088/teacher/
 echo 学生机  http://本机IP:8088/student/
 echo 健康检查 http://本机IP:8088/api/v1/health

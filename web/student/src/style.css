@@ -834,6 +834,17 @@ main {
   font-size: 0.8rem;
   color: var(--muted);
 }
+
+.hud-ver {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.board .hud-ver {
+  text-align: center;
+}
 .mode-pill {
   border: 1px solid var(--line);
   border-radius: 999px;
