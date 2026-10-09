@@ -2,7 +2,7 @@ export function cubeMark(): string {
   return `<span class="iso-cube" aria-hidden="true"><i class="c-top"></i><i class="c-left"></i><i class="c-right"></i></span>`;
 }
 
-export const APP_VERSION = "0.2.1";
+export const APP_VERSION = "0.2.2";
 
 export function hudVersion(): string {
   return `<p class="hud-ver">v${APP_VERSION}</p>`;
