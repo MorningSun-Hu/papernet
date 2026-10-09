@@ -66,6 +66,20 @@ type PortDraft = {
   end: number | null;
 };
 
+type LiveField = {
+  selector: string;
+  name: string;
+  value: string;
+  start: number | null;
+  end: number | null;
+  focused: boolean;
+};
+
+type LiveDraft = {
+  port: PortDraft | null;
+  fields: LiveField[];
+};
+
 function capturePortDraft(): PortDraft | null {
   const form = app.querySelector<HTMLFormElement>("form.port-editor");
   if (!form) {
@@ -117,8 +131,68 @@ function restorePortDraft(draft: PortDraft | null): void {
   }
 }
 
+function captureLiveDraft(): LiveDraft {
+  const active = document.activeElement;
+  const fields: LiveField[] = [];
+  for (const selector of ["form.wx-peer-form", "form.router-ping-form", "form.chat-form"]) {
+    const form = app.querySelector<HTMLFormElement>(selector);
+    if (!form) {
+      continue;
+    }
+    for (const el of form.querySelectorAll("input")) {
+      if (!(el instanceof HTMLInputElement) || el.type === "hidden" || !el.name) {
+        continue;
+      }
+      const focused = active === el;
+      fields.push({
+        selector,
+        name: el.name,
+        value: el.value,
+        start: focused ? el.selectionStart : null,
+        end: focused ? el.selectionEnd : null,
+        focused,
+      });
+    }
+  }
+  return { port: capturePortDraft(), fields };
+}
+
+function restoreLiveDraft(draft: LiveDraft): void {
+  restorePortDraft(draft.port);
+  for (const field of draft.fields) {
+    const form = app.querySelector<HTMLFormElement>(field.selector);
+    const el = form?.querySelector<HTMLInputElement>(`[name="${field.name}"]`);
+    if (!el) {
+      continue;
+    }
+    el.value = field.value;
+    if (field.name === "to_ip" && form?.classList.contains("router-ping-form")) {
+      pingIp = field.value;
+    }
+    if (field.name === "peer_ip" && screen.kind === "claimed") {
+      screen = { ...screen, chatPeerIp: field.value };
+    }
+    if (!field.focused) {
+      continue;
+    }
+    el.focus();
+    if (field.start != null && field.end != null) {
+      el.setSelectionRange(field.start, field.end);
+    }
+  }
+}
+
+function blocksLiveRender(): boolean {
+  return Boolean(
+    selectedPortId ||
+      pingOpen ||
+      composeOpen ||
+      (screen.kind === "claimed" && screen.chatPrompt),
+  );
+}
+
 function render(): void {
-  const draft = capturePortDraft();
+  const draft = captureLiveDraft();
   app.innerHTML = htmlFor(screen);
   document.title = documentTitle(screen);
   if (screen.kind === "claimed") {
@@ -126,7 +200,7 @@ function render(): void {
     layoutWires(app);
     placeForwardDlg(app);
   }
-  restorePortDraft(draft);
+  restoreLiveDraft(draft);
   const pingOut = app.querySelector(".ping-out");
   if (pingOut) {
     pingOut.scrollTop = pingOut.scrollHeight;
@@ -340,7 +414,7 @@ function setScreen(next: Screen): void {
 }
 
 function applyLivePatch(next: Screen): void {
-  if (selectedPortId && next.kind === "claimed" && screen.kind === "claimed") {
+  if (blocksLiveRender() && next.kind === "claimed" && screen.kind === "claimed") {
     screen = next;
     persistScreen(next);
     return;
@@ -351,7 +425,7 @@ function applyLivePatch(next: Screen): void {
 async function refreshPeers(connectionId: string): Promise<void> {
   try {
     peers = await listPeers(connectionId);
-    if (screen.kind === "claimed") {
+    if (screen.kind === "claimed" && !blocksLiveRender()) {
       render();
     }
   } catch {
@@ -515,10 +589,16 @@ app.addEventListener(
 
 app.addEventListener("input", (ev) => {
   const el = ev.target;
-  if (!(el instanceof HTMLInputElement) || el.name !== "to_ip" || !el.closest(".router-ping-form")) {
+  if (!(el instanceof HTMLInputElement)) {
     return;
   }
-  pingIp = el.value;
+  if (el.name === "to_ip" && el.closest(".router-ping-form")) {
+    pingIp = el.value;
+    return;
+  }
+  if (el.name === "peer_ip" && el.closest(".wx-peer-form") && screen.kind === "claimed") {
+    screen = { ...screen, chatPeerIp: el.value };
+  }
 });
 
 app.addEventListener("click", (ev) => {

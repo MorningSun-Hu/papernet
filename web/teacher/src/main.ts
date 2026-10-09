@@ -358,7 +358,7 @@ function bind(): void {
   });
   roster?.addEventListener("change", () => {
     clampRosterInputs(roster, true);
-    const ports = form.routerPorts;
+    const ports = roster.querySelectorAll('input[name^="router_ip_"]').length;
     syncRosterForm(roster);
     if (form.routerPorts !== ports) {
       render();

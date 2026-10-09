@@ -211,6 +211,9 @@ assert.ok(studentMain.includes("toUpperCase"));
 assert.ok(studentMain.includes("selectedPortId = null"));
 assert.ok(studentMain.includes("applyLivePatch"));
 assert.ok(studentMain.includes("portBtn?.dataset.port"));
+assert.ok(studentMain.includes("blocksLiveRender"));
+assert.ok(studentMain.includes("captureLiveDraft"));
+assert.ok(studentMain.includes('el.name === "peer_ip"'));
 
 assert.ok(studentStage.includes('name="peer_port_id"'));
 assert.equal(studentStage.includes("<select name=\"peer_port_id\">"), false);

@@ -44,6 +44,7 @@ assert.match(teacherMain, /<h3>未领取<\/h3>/);
 assert.match(teacherMain, /topoZoom/);
 assert.match(teacherMain, /stepper\("routerPorts", "路由器口数", form.routerPorts, 1, 3\)/);
 assert.match(teacherMain, /form.routerPorts !== ports/);
+assert.match(teacherMain, /input\[name\^="router_ip_"\]/);
 assert.match(teacherMain, /patchTopo\(topo, lastView\)/);
 
 assert.match(teacherMain, /网络分流器/);
